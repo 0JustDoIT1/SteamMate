@@ -1,0 +1,14 @@
+services:
+  db:
+    image: postgres:17
+    container_name: steammate-db
+    environment:
+      POSTGRES_USER: steammate
+      POSTGRES_PASSWORD: steammate
+      POSTGRES_DB: steammate
+    ports:
+      - "5433:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+volumes:
+  pgdata:
