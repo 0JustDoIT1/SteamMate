@@ -127,6 +127,11 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /**
+         * FetchStatus
+         * @enum {string}
+         */
+        FetchStatus: "PENDING" | "SUCCESS" | "TEMPORARY_ERROR" | "NOT_AVAILABLE";
         /** LibraryGame */
         LibraryGame: {
             /** Appid */
@@ -141,6 +146,11 @@ export interface components {
             lastPlayedAt: string | null;
             /** Iconurl */
             iconUrl: string | null;
+            metadataStatus: components["schemas"]["FetchStatus"];
+            /** Apptype */
+            appType: string | null;
+            /** Genres */
+            genres: string[];
         };
         /** LibraryResponse */
         LibraryResponse: {
@@ -151,6 +161,9 @@ export interface components {
             /** Games */
             games: components["schemas"]["LibraryGame"][];
             summary: components["schemas"]["LibrarySummary"];
+            metadataCoverage: components["schemas"]["MetadataCoverage"];
+            /** Metadatasnapshotat */
+            metadataSnapshotAt: string | null;
             /**
              * Fetchedat
              * Format: date-time
@@ -172,6 +185,21 @@ export interface components {
         MeResponse: {
             /** Steamid */
             steamId: string;
+        };
+        /** MetadataCoverage */
+        MetadataCoverage: {
+            /** Success */
+            success: number;
+            /** Pending */
+            pending: number;
+            /** Temporaryerror */
+            temporaryError: number;
+            /** Notavailable */
+            notAvailable: number;
+            /** Total */
+            total: number;
+            /** Ratio */
+            ratio: number;
         };
     };
     responses: never;
