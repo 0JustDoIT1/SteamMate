@@ -3,6 +3,8 @@
 > 통합 PRD v5.2에서 해당 프로젝트 요구사항을 분리하고 기존 상세 설계 초안을 병합한 문서. 변경 제안은 승인 전 문서에 직접 반영하지 않는다.
 >
 > **v6 (2026-11-03, 사용자 승인)**: Steam 로그인, 할인(위시리스트·DLC·미보유 게임 추천), 인기 대시보드, 점수 기반 추천 이유 추가. API 경로·응답 형식·데이터 모델·오류 코드 통일. 릴리스를 R1/R2로 분할.
+>
+> **v6.1 (2026-11-03, 사용자 승인)**: 로그인 필수 — 개인 데이터는 로그인한 본인 것만 조회(SteamID·URL 직접 입력 제거, `/me/*` API). 구현 순서를 로그인 → 대시보드 → 기능으로 재배치.
 
 ---
 
@@ -12,26 +14,28 @@
 
 # 01 | SteamMate AI
 
-Steam 공개 라이브러리의 플레이 패턴과 장르를 분석해 보유 게임 중 다음 게임을 추천하고, 취향에 맞는 할인 게임과 Steam 인기 동향을 보여주며, 선택한 게임의 공식 뉴스 내용을 기반으로 근거 있는 답변을 제공한다.
+Steam 로그인한 사용자의 공개 라이브러리에서 플레이 패턴과 장르를 분석해 보유 게임 중 다음 게임을 추천하고, 취향에 맞는 할인 게임과 Steam 인기 동향을 보여주며, 선택한 게임의 공식 뉴스 내용을 기반으로 근거 있는 답변을 제공한다.
 
 ## MVP 사용자 흐름
 
-대시보드(이번 주 인기·할인) → Steam 로그인 또는 프로필 URL/SteamID 입력 → 공개 라이브러리 조회 → 부분 메타데이터를 포함한 분석 → 보유 게임 TOP 3 추천(이유 포함) → 할인 정보(위시리스트·DLC·미보유 추천) → 게임 뉴스 선택 → 업데이트 질문 → 근거와 원문 링크 확인
+대시보드(이번 주 인기·할인, 비로그인 열람 가능) → Steam 로그인 → 본인 공개 라이브러리 조회 → 부분 메타데이터를 포함한 분석 → 보유 게임 TOP 3 추천(이유 포함) → 할인 정보(위시리스트·DLC·미보유 추천) → 게임 뉴스 선택 → 업데이트 질문 → 근거와 원문 링크 확인
 
 | # | 기능 | 범위와 완료 기준 |
 | --- | --- | --- |
-| F1 | 프로필 입력 / Steam 로그인 | URL·Vanity·SteamID64 입력 또는 Steam OpenID 로그인(선택). 로그인은 SteamID 확인용이며 비공개 라이브러리 접근 권한을 주지 않음 |
-| F2 | 라이브러리 분석 | GetOwnedGames 실조회; 플레이 시간·장르 분포; 비공개 시 설정 안내; 커버리지 n/m 노출 |
+| F1 | Steam 로그인 | Steam OpenID 로그인 필수(개인 기능). 로그인은 본인 SteamID 확인용이며 비공개 라이브러리 접근 권한을 주지 않음. 다른 사용자의 SteamID·URL 조회 기능은 제공하지 않음 |
+| F2 | 라이브러리 분석 | 본인 GetOwnedGames 실조회; 플레이 시간·장르 분포; 비공개 시 설정 안내(프로필 비공개/게임 세부정보 비공개 구분); 커버리지 n/m 노출 |
 | F3 | 보유 게임 추천 | 보유 게임 중 TOP 3, 점수 요소별 이유·모드·조회 기준 시각 포함; 미플레이/저플레이 우선 옵션 |
 | F4 | 할인 | ⓐ 위시리스트 할인 ⓑ 보유 게임 DLC 할인 ⓒ 미보유 할인 게임 추천(취향 점수, 후보 풀 크기 표시) |
-| F5 | 인기 대시보드 | 이번 주 인기·최다 플레이·할인·신작, 순위 변화; 로그인/입력 시 보유·위시리스트·취향 매칭 표시 |
+| F5 | 인기 대시보드 | 이번 주 인기·최다 플레이·할인·신작, 순위 변화; 비로그인 열람 가능, 로그인 시 보유·위시리스트·취향 매칭 표시 |
 | F6 | 업데이트 AI | GetNewsForApp 요청 시 획득 → BBCode/HTML 정제 → 작은 코퍼스는 Full Context, 큰 경우 임시 RAG → 원문 링크; 근거 부족 시 응답 제한 |
+
+**접근 원칙**: 개인 데이터 API(`/me/*`)는 서버 세션의 steamId만 사용하며 클라이언트가 보낸 steamId를 받지 않는다. 대시보드와 게임 뉴스는 공개 데이터이므로 비로그인 열람을 허용한다.
 
 **릴리스 분할**: R1 = F1~F5 + F6의 뉴스 목록·원문 링크 / R2 = F6 AI 질문. F6(Full Context vs RAG)은 핵심 기술 문제이므로 R2에서 반드시 수행한다.
 
 **F4ⓒ 한계**: Steam 전체 할인 목록을 제공하는 공식 API가 없다. 후보 풀은 Steam 할인·인기·신작 목록에 오른 게임으로 제한하고 응답에 후보 수를 표시한다. 상점 검색 HTML 스크래핑은 하지 않는다.
 
-**제외**: 친구 비교, 알림, 사용자 계정 DB, 추천 이력 저장, Hybrid 검색(2차 실험).
+**제외**: 타인 SteamID 조회, 친구 비교, 알림, 사용자 계정 DB, 추천 이력 저장, Hybrid 검색(2차 실험).
 
 ## 데이터 소스 및 저장 정책
 
@@ -43,8 +47,8 @@ NOT_AVAILABLE은 장르가 실제로 존재하지 않거나 대상이 상점 메
 
 | 데이터 | 처리 |
 | --- | --- |
-| 보유 게임·플레이 시간 | 공개 SteamID만 조회. 개인 라이브러리 원본은 MVP 영구 저장하지 않음 |
-| 위시리스트 | 공개 위시리스트만 요청 시 조회(비문서화 IWishlistService). 영구 저장하지 않음 |
+| 보유 게임·플레이 시간 | 로그인한 본인 SteamID만 조회. 개인 라이브러리 원본은 MVP 영구 저장하지 않음 |
+| 위시리스트 | 본인 공개 위시리스트만 요청 시 조회(비문서화 IWishlistService). 영구 저장하지 않음 |
 | 로그인 세션 | 서명 쿠키(steamId + 만료)만. 사용자 테이블 없음 |
 | 게임 장르/카테고리/DLC | store appdetails를 appid 키로 PostgreSQL에 캐싱. 비문서화 엔드포인트의 이용 조건·실패·429·구조 변경에 대응 |
 | 게임 가격 | appdetails price_overview를 (appid, cc) 키로 단기 TTL 캐싱 |
@@ -72,7 +76,7 @@ metadataCoverage.ratio = SUCCESS / (SUCCESS + PENDING + TEMPORARY_ERROR) = succe
 
 ## 출시 게이트
 
-- Steam API 키는 서버에서만 관리한다.
+- Steam API 키와 세션 서명 비밀값은 서버에서만 관리한다.
 - Steam 뉴스 본문의 공개 AI 처리·저장·임베딩 권리는 미확정. 권리 확인 전 공개 RAG는 이용 허락된 자료로 제한하며 Steam 뉴스는 목록/원문 링크로 분리한다. 뉴스 AI 질문은 기능 플래그로 두고 **공개 배포 기본 OFF**.
 - 비문서화 store 엔드포인트(appdetails, featuredcategories)·위시리스트·차트 데이터를 공개 서비스에서 사용하는 것도 출시 전 Steam 약관 검토 대상이다.
 - 요청당 토큰·비용 상한과 타임아웃·API 제한을 적용한다.
@@ -92,7 +96,7 @@ Browser ─ Next.js (App Router, client: TanStack Query + Zustand)
             │ /api/* → next.config rewrites (동일 출처: 쿠키 1st-party, CORS 불필요)
             ▼
         FastAPI
-          routers : auth, profile, library, recommendations, deals, dashboard, news
+          routers : auth, me(library·recommendations·deals), dashboard, news
           clients : steam_web_api(키), store_api(비문서화: appdetails·featuredcategories), charts_api
           services: metadata, price, recommender(순수 함수), deal_recommender(순수 함수),
                     dashboard, news_cleaner, qa(LLM 인터페이스), session(서명 쿠키)
@@ -108,10 +112,11 @@ Browser ─ Next.js (App Router, client: TanStack Query + Zustand)
 ## 외부 데이터 소스
 | 용도 | 엔드포인트 | 상태 |
 |---|---|---|
-| Vanity 해석 / 보유 게임 | ResolveVanityURL / GetOwnedGames | 공식 |
+| 로그인 | steamcommunity.com/openid (OpenID 2.0) | 공식 |
+| 보유 게임 | IPlayerService/GetOwnedGames | 공식 |
+| 공개 상태 판별 | ISteamUser/GetPlayerSummaries (`communityvisibilitystate`) | 공식 |
 | 동시 접속자 | ISteamUserStats/GetNumberOfCurrentPlayers | 공식 |
 | 뉴스 | GetNewsForApp | 공식 |
-| 로그인 | steamcommunity.com/openid (OpenID 2.0) | 공식 |
 | 위시리스트 | IWishlistService/GetWishlist/v1 | 비문서화(커뮤니티 문서만), 공개 위시리스트만 |
 | 장르·DLC·가격 | store appdetails | 비문서화 |
 | 할인·인기·신작 목록 | store /api/featuredcategories | 비문서화, 스키마 변경 가능 |
@@ -119,22 +124,23 @@ Browser ─ Next.js (App Router, client: TanStack Query + Zustand)
 
 모든 소스는 어댑터로 분리하고 응답을 Pydantic으로 검증한다. 구조 변경 시 TEMPORARY_ERROR + 경고 로그. 사용 불가로 확인된 소스는 해당 대시보드 섹션을 비표시한다.
 
-### 1. 라이브러리 및 추천
-1. 사용자가 Steam 프로필 URL·Vanity ID·SteamID64를 입력하거나 로그인한다. URL 형식을 검증하고 필요한 경우 ResolveVanityURL을 호출한다.
-2. GetOwnedGames가 반환한 공개 보유 게임·플레이 시간 사용. 비공개 상태는 친절한 설정 안내와 함께 실패 처리.
+### 1. 로그인
+1. `/auth/steam/login` → Steam OpenID 리다이렉트(`return_to`=`{PUBLIC_BASE_URL}/api/auth/steam/callback`, `realm`=`PUBLIC_BASE_URL`).
+2. 콜백에서 `check_authentication`으로 서명 재검증, `claimed_id`(`^https://steamcommunity.com/openid/id/(\d{17})$`)·`op_endpoint`·`return_to` 일치, nonce 재사용 차단.
+3. `itsdangerous` 서명 쿠키 발급(`HttpOnly`, 운영 `Secure`, `SameSite=Lax`, 만료 7일 임시). 서명 키는 `SESSION_SECRET`.
+4. `/me/*`는 쿠키가 없거나 서명·만료 검증 실패 시 `UNAUTHENTICATED`.
+
+### 2. 라이브러리 및 추천
+1. 세션의 steamId로 GetOwnedGames(`include_appinfo=1`, `include_played_free_games=1`)를 호출한다.
+2. 응답에 `games`가 없으면(HTTP 200 빈 `response`) GetPlayerSummaries로 판별한다: `players` 비어 있음 → `PROFILE_NOT_FOUND`, `communityvisibilitystate != 3` → 프로필 비공개, `== 3` → 게임 세부정보 비공개. 둘 다 `LIBRARY_PRIVATE`로 응답하되 안내 문구를 구분한다.
 3. appid별 캐시 일괄 조회 후 누락·만료 게임만 제한된 동시성으로 appdetails 조회. 오래된 PENDING은 재시도 대상.
 4. 커버리지 = success / (total − notAvailable). 진행 중·일시 실패 수량도 명시. 기준 미달 시 PLAYTIME_BASED, 충족 시 GENRE_AWARE.
 5. 추천 결과에 `metadataSnapshotAt`, `metadataCoverage`, `recommendationMode`, `calculatedAt`, 항목별 `reasons` 포함. 동점은 appid 오름차순.
 
-### 2. 로그인
-1. `/auth/steam/login` → Steam OpenID 리다이렉트(`return_to`=콜백, `realm`=사이트 출처).
-2. 콜백에서 `check_authentication`으로 서명 재검증, `claimed_id`(`^https://steamcommunity.com/openid/id/(\d{17})$`)·`op_endpoint`·`return_to` 일치, nonce 재사용 차단.
-3. `itsdangerous` 서명 쿠키 발급(`HttpOnly`, 운영 `Secure`, `SameSite=Lax`, 만료 7일 임시).
-
 ### 3. 할인·대시보드
 1. collector가 featuredcategories·차트 스냅샷을 저장하고, 포함된 appid의 메타데이터·가격을 보강한다.
 2. 미보유 할인 추천 후보 = 최신 스냅샷 풀 − 보유 게임, `discount_percent > 0`.
-3. 대시보드는 소스별 `snapshotAt`과 이전 스냅샷 대비 순위 변화를 표시한다.
+3. 대시보드는 소스별 `snapshotAt`과 이전 스냅샷 대비 순위 변화를 표시한다. 로그인 상태면 세션 steamId로 개인화한다.
 
 ### 4. 업데이트 AI
 1. 게임별 뉴스 API를 요청 시 호출, 컨텐츠 BBCode/HTML 정제 및 태그·URL 검증.
@@ -143,9 +149,9 @@ Browser ─ Next.js (App Router, client: TanStack Query + Zustand)
 4. 뉴스 전문·임베딩은 영구 DB에 적재하지 않음. 요청·임시 TTL 캐시 사용 후 만료 삭제. TTL은 법적 이용 허가를 대신하지 않음.
 
 ## 프론트엔드 상태 관리
-- **TanStack Query**: 서버 데이터 전부(`['me']`, `['library',id]`, `['recs',id,opts]`, `['deals',id,cc]`, `['dashboard',cc,id?]`, `['news',appid]`, `useMutation(ask)`). coverage < 100%면 `refetchInterval` 폴링.
-- **Zustand**: 전역 클라이언트 상태(`steamId`, `recOptions`, `excludedAppids`(persist), `selectedAppid`, `cc`). 서버 데이터를 복제하지 않는다. 클라이언트 컴포넌트에서만 사용.
-- 화면: `/` 대시보드 + 입력·로그인 → `/u/[steamId]` 분석·추천·할인 → `/u/[steamId]/news/[appid]`.
+- **TanStack Query**: 서버 데이터 전부(`['me']`(로그인 상태), `['library']`, `['recs',opts]`, `['deals',cc]`, `['dashboard',cc]`, `['news',appid]`, `useMutation(ask)`). coverage < 100%면 `refetchInterval` 폴링.
+- **Zustand**: 전역 클라이언트 상태(`recOptions`, `excludedAppids`(persist), `selectedAppid`, `cc`). 로그인 상태·steamId를 포함한 서버 데이터를 복제하지 않는다. 클라이언트 컴포넌트에서만 사용.
+- 화면: `/` 대시보드 + 로그인 버튼 → `/me` 내 분석·추천·할인 → `/news/[appid]` 뉴스·질문.
 
 ---
 
@@ -181,21 +187,20 @@ Browser ─ Next.js (App Router, client: TanStack Query + Zustand)
 
 # API 명세
 
-프론트는 `/api` 프리픽스로 호출하고 Next.js rewrites가 FastAPI로 전달한다.
+프론트는 `/api` 프리픽스로 호출하고 Next.js rewrites가 FastAPI로 전달한다. `/me/*`는 로그인 필수이며 세션의 steamId만 사용한다.
 
-| 메서드 | 경로 | 설명 |
-|---|---|---|
-| GET | `/auth/steam/login` | Steam OpenID 리다이렉트 |
-| GET | `/auth/steam/callback` | 서명 검증 후 쿠키 발급 |
-| GET | `/auth/me` | `{steamId}` 또는 401 |
-| POST | `/auth/logout` | 쿠키 삭제 |
-| GET | `/steam/profile/resolve?input=` | URL/Vanity/SteamID64 → `{steamId}` |
-| GET | `/steam/library/{steamId}` | 공개 게임·플레이시간·장르 분포·`metadataCoverage` |
-| GET | `/steam/recommendations/{steamId}?preferUnplayed=&exclude=` | 보유 게임 TOP3 + reasons + 모드·스냅샷 |
-| GET | `/steam/deals/{steamId}?cc=kr` | `wishlistDeals`, `dlcDeals`, `storeDeals`, `candidatePoolSize`, `priceSnapshotAt` |
-| GET | `/steam/dashboard?cc=kr&steamId=` | 섹션별 `{source, snapshotAt, entries[]}`, 장르 분포 |
-| GET | `/steam/news/{appid}` | 뉴스 목록·원문 링크 |
-| POST | `/steam/news/ask` | `{appid, question, dateRange?}` → 답변·근거·출처·모드 |
+| 메서드 | 경로 | 인증 | 설명 |
+|---|---|---|---|
+| GET | `/auth/steam/login` | — | Steam OpenID 리다이렉트 |
+| GET | `/auth/steam/callback` | — | 서명 검증 후 쿠키 발급, `/me`로 리다이렉트 |
+| GET | `/auth/me` | 선택 | `{steamId}` 또는 401 |
+| POST | `/auth/logout` | — | 쿠키 삭제 |
+| GET | `/me/library` | 필수 | 본인 공개 게임·플레이시간·장르 분포·`metadataCoverage` |
+| GET | `/me/recommendations?preferUnplayed=&exclude=` | 필수 | 보유 게임 TOP3 + reasons + 모드·스냅샷 |
+| GET | `/me/deals?cc=kr` | 필수 | `wishlistDeals`, `dlcDeals`, `storeDeals`, `candidatePoolSize`, `priceSnapshotAt` |
+| GET | `/steam/dashboard?cc=kr` | 선택 | 섹션별 `{source, snapshotAt, entries[]}`, 장르 분포. 로그인 시 개인화 |
+| GET | `/steam/news/{appid}` | — | 뉴스 목록·원문 링크 |
+| POST | `/steam/news/ask` | — | `{appid, question, dateRange?}` → 답변·근거·출처·모드 |
 
 추천 응답 예:
 ```json
@@ -221,8 +226,8 @@ Browser ─ Next.js (App Router, client: TanStack Query + Zustand)
 | 코드 | 의미 |
 |---|---|
 | INVALID_INPUT | 입력 형식 오류 |
-| PROFILE_NOT_FOUND | Vanity/ID 해석 실패 |
-| LIBRARY_PRIVATE | 라이브러리 비공개 |
+| PROFILE_NOT_FOUND | 세션의 Steam 계정을 찾을 수 없음 |
+| LIBRARY_PRIVATE | 라이브러리 비공개(프로필 비공개/게임 세부정보 비공개 안내 구분) |
 | WISHLIST_PRIVATE | 위시리스트 비공개 |
 | STEAM_RATE_LIMITED | Steam 429 |
 | STEAM_UNAVAILABLE | Steam 5xx·응답 구조 이상 |
@@ -278,16 +283,16 @@ Browser ─ Next.js (App Router, client: TanStack Query + Zustand)
 | FE 서버 데이터 / 전역 상태 | `@tanstack/react-query`, `zustand` | 1단계 |
 | FE↔BE 타입 동기화 | `openapi-typescript`(dev) | 1단계 |
 | Steam HTTP / 테스트 모킹 | `httpx` / `httpx.MockTransport` | 설치됨 |
+| 쿠키 서명 | `itsdangerous` | 2단계 |
+| OpenID 2.0 | 직접 구현(httpx) | 2단계 |
 | 레이트리미터·동시성 | 직접 구현(asyncio 토큰버킷 + Semaphore) | 3단계 |
 | 메모리 TTL 캐시 | `cachetools` | 3단계 |
-| 쿠키 서명 | `itsdangerous` | 5단계 |
-| OpenID 2.0 | 직접 구현(httpx) | 5단계 |
-| 주기 작업 | asyncio 태스크 + advisory lock | 6단계 |
-| BBCode/HTML 정제 | stdlib `html.parser` (한계 시 `beautifulsoup4`) | 8단계 |
-| 벡터 검색 | `numpy` | 9단계 |
-| LLM·임베딩·토크나이저 | 제공자 결정 후 공식 SDK | 9단계 |
+| 주기 작업 | asyncio 태스크 + advisory lock | 3단계 |
+| BBCode/HTML 정제 | stdlib `html.parser` (한계 시 `beautifulsoup4`) | 6단계 |
+| 벡터 검색 | `numpy` | 7단계 |
+| LLM·임베딩·토크나이저 | 제공자 결정 후 공식 SDK | 7단계 |
 | 대시보드 그래프 | 표 우선, 필요 시 `recharts` | 보류 |
-| E2E | `@playwright/test` | 11단계 |
+| E2E | `@playwright/test` | 9단계 |
 
 위 목록 외 라이브러리는 사용자 승인 후 추가한다. 버전·호환성은 설치 시 확인한다.
 
@@ -295,22 +300,21 @@ Browser ─ Next.js (App Router, client: TanStack Query + Zustand)
 
 # 구현 단계 및 완료 기준
 
-각 단계 = 백엔드 + 해당 화면 + 테스트.
+각 단계 = 백엔드 + 해당 화면 + 테스트. 순서: 로그인 → 대시보드 → 기능.
 
 | 단계 | 범위 | 완료 조건 |
 |---|---|---|
 | 0 | PRD 반영, Claude Code hooks | 문서 갱신, 가드레일 동작 |
 | 1 | 실행 환경(설정·DB 지연 생성·오류 핸들러·로그 마스킹·pytest), CI, FE Query/Zustand·rewrites | BE 기동·`/health/db`·pytest·FE lint/tsc·CI 통과 |
-| 2 | SteamID/URL 파서 + 공개 라이브러리 API, FE 입력·목록 | 공개 조회, 비공개 `LIBRARY_PRIVATE` |
-| 3 | game_metadata 캐시, 레이트리미터·제한 동시 요청, 상태 전이, 부분 응답, FE coverage 폴링 | 429가 NOT_AVAILABLE이 되지 않음, migration up/down |
-| 4 | 보유 게임 추천 + 이유, metadataSnapshotAt 재현성 | TOP3·이유·모드·스냅샷 |
-| 5 | Steam 로그인 | 위조 서명·nonce 재사용·만료 쿠키 거부 |
-| 6 | 소스 스파이크 → 차트 스냅샷·collector·대시보드 | 소스별 snapshotAt, 실패 소스 섹션 비표시 |
-| 7 | game_price, 위시리스트·DLC·미보유 할인 추천 | 3종 할인 목록, 후보 풀 크기, `DATA_NOT_READY` |
-| 8 | 뉴스 조회·BBCode/HTML 정제·원문 URL 보존 | 목록·원문 링크 (**R1 완료**) |
-| 9 | 합성 평가 데이터로 Full Context·RAG 구현 및 토큰 축 실험 | 실험 리포트, 임계값 제안 |
-| 10 | `/news/ask`: TTL 메모리·출처 인용·LLM 실패 대응·기능 플래그 | 근거·출처 답변 (**R2 완료**) |
-| 11 | 전체 E2E·API 제한·배포(Dockerfile·compose·운영 설정, 배포 대상 결정) | DoD 충족, 미검증 항목 문서화 |
+| 2 | Steam 로그인(OpenID·서명 쿠키·me/logout) + `/me/library` 기본 조회, FE 로그인 버튼·`/me` 게임 목록 | 로그인→내 게임 목록 표시, 비공개 `LIBRARY_PRIVATE`(사유 구분), 위조 서명·nonce 재사용·만료 쿠키 거부 |
+| 3a | game_metadata 캐시, store 레이트리미터·제한 동시 요청, 상태 전이, 부분 응답 | 429가 NOT_AVAILABLE이 되지 않음, migration up/down |
+| 3b | 소스 스파이크 → 차트 스냅샷·collector·대시보드 화면, 로그인 시 개인화 | 소스별 snapshotAt, 실패 소스 섹션 비표시 |
+| 4 | 라이브러리 분석(장르 분포·coverage 폴링) + 보유 게임 추천·이유, metadataSnapshotAt 재현성 | TOP3·이유·모드·스냅샷 |
+| 5 | game_price, 위시리스트·DLC·미보유 할인 추천 | 3종 할인 목록, 후보 풀 크기, `DATA_NOT_READY` |
+| 6 | 뉴스 조회·BBCode/HTML 정제·원문 URL 보존 | 목록·원문 링크 (**R1 완료**) |
+| 7 | 합성 평가 데이터로 Full Context·RAG 구현 및 토큰 축 실험 | 실험 리포트, 임계값 제안 |
+| 8 | `/steam/news/ask`: TTL 메모리·출처 인용·LLM 실패 대응·기능 플래그 | 근거·출처 답변 (**R2 완료**) |
+| 9 | 전체 E2E·API 제한·배포(Dockerfile·compose·운영 설정, 배포 대상 결정) | DoD 충족, 미검증 항목 문서화 |
 
 ### Definition of Done
-대시보드 표시 → SteamID/프로필 URL 또는 로그인 → 게임 분석 → 보유 게임 추천(이유 포함) → 할인 정보 → 뉴스 표시 성공. 권리 충족 시 질문→근거 응답. 캐시 실패 시 부분 결과, 통신 실패 시 오류 안내. 실제 테스트 결과와 미검증 항목을 기록.
+대시보드 표시(비로그인) → Steam 로그인 → 내 게임 분석 → 보유 게임 추천(이유 포함) → 할인 정보 → 뉴스 표시 성공. 권리 충족 시 질문→근거 응답. 캐시 실패 시 부분 결과, 통신 실패 시 오류 안내. 실제 테스트 결과와 미검증 항목을 기록.
