@@ -22,7 +22,6 @@ class ErrorCode(StrEnum):
     UNAUTHENTICATED = "UNAUTHENTICATED"
     AUTH_FAILED = "AUTH_FAILED"
     FEATURE_DISABLED = "FEATURE_DISABLED"
-    # PRD 목록 외: 라우팅·예상치 못한 오류도 같은 형식으로 응답하기 위한 코드
     NOT_FOUND = "NOT_FOUND"
     INTERNAL_ERROR = "INTERNAL_ERROR"
 

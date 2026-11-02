@@ -232,6 +232,8 @@ Browser ─ Next.js (App Router, client: TanStack Query + Zustand)
 | UNAUTHENTICATED | 로그인 필요 |
 | AUTH_FAILED | OpenID 검증 실패 |
 | FEATURE_DISABLED | 기능 플래그 OFF |
+| NOT_FOUND | 존재하지 않는 경로 |
+| INTERNAL_ERROR | 예상치 못한 서버 오류(내부 메시지 비노출) |
 
 ---
 
