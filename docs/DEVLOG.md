@@ -12,8 +12,8 @@
 | 0 | PRD v6 반영, Claude Code 가드레일 | ✅ 완료 |
 | 1 | 실행 환경 정비, 테스트 기반, CI, 프론트 Provider·프록시 | ✅ 완료 (CI 통과) |
 | 2 | Steam 로그인 + `/me/library` 기본 조회 | ✅ 완료 (실계정 로그인·로그아웃 확인) |
-| 3a | 메타데이터 캐시(game_metadata, 레이트리미터) | ⏭ 다음 |
-| 3b | 소스 스파이크 → 인기 대시보드 | 대기 |
+| 3a | 메타데이터 캐시(game_metadata, 레이트리미터) | ✅ 완료 (실계정 58개 보강 확인, 커밋 전) |
+| 3b | 소스 스파이크 → 인기 대시보드 | ⏭ 다음 |
 | 4 | 라이브러리 분석 + 보유 게임 추천·이유 | 대기 |
 | 5 | 가격·할인(위시리스트·DLC·미보유 추천) | 대기 |
 | 6 | 뉴스 조회·정제 (R1 완료) | 대기 |
@@ -49,6 +49,11 @@
 | 11-03 | 로그인은 같은 창 이동 유지(팝업 X), 로그인 후 `/me`로 이동 | 팝업 차단·모바일·보안 검증 부담. 사용자 결정 "그대로" |
 | 11-03 | SteamID 직접 입력 기능 추가하지 않음(로그인만) | v6.1 원칙 유지. 입력 허용 시 타인 조회를 막을 수 없음. 사용자 결정 "그대로" |
 | 11-03 | 로그인 상태는 TanStack Query `['me']`로 관리, Zustand에서 `steamId` 제거 | 서버 데이터는 Query 단독 관리 원칙 |
+| 11-03 | 메타데이터 캐시는 **게임 단위 공용 DB**(사용자 정보와 연결하지 않음), 백그라운드 보강 + 부분 응답 | appdetails 장르는 게임 1개당 요청 1번 → 요청 안에서 대형 라이브러리를 채울 수 없음 |
+| 11-03 | 3a 값(임시): 0.6회/초·버스트 10·동시 4, 429/403 시 60초 정지, SUCCESS 7일, NOT_AVAILABLE 30일 재확인, 재시도 5분(오류)/15분(429)/1시간(success:false), PENDING 10분 초과 복구, `cc=kr`·`l=english` | 추정 한도 200회/5분에 여유. 사용자 승인 |
+| 11-03 | `success:false`는 연속 2회일 때만 NOT_AVAILABLE, 장르 없는 정상 응답은 즉시 NOT_AVAILABLE | PRD "재확인으로 확정" |
+| 11-03 | 만료된 SUCCESS의 갱신이 일시 실패하면 기존 장르 유지 | 일시 장애로 coverage가 떨어지지 않게 |
+| 11-03 | `game_metadata.app_type` 컬럼 추가 (PRD 반영) | 사운드트랙·도구 등 비게임 제외용 |
 
 **보류 중인 결정**
 - 추천 점수 가중치 확정 (4·7단계 착수 시)
@@ -172,7 +177,45 @@
 
 **참고**
 - 타입 생성: 백엔드 실행 중 `npm run gen:api` (또는 OpenAPI JSON을 추출해 `npx openapi-typescript <file>`)
-- `/me/library` 응답의 장르 분포·`metadataCoverage`는 4단계에서 추가(PRD 명세상 포함 예정)
+- `/me/library` 응답의 장르 분포·`metadataCoverage`는 4단계에서 추가(PRD 명세상 포함 예정) → coverage·게임별 장르는 3a에서 추가됨
+
+### 3a단계 — 게임 메타데이터 캐시 (2026-11-03)
+
+**스파이크** [확인] — store appdetails
+| 확인 | 결과 |
+|---|---|
+| 단일 appid | `success:true`, `type`·`genres[{id,description}]`·`categories`·`dlc` 등 |
+| 없는 appid | HTTP 200 `{"success": false}` |
+| 다중 appid | 필터 없음·genres 필터 → HTTP 400. `price_overview` 필터만 다중 허용(5단계 가격에 활용) |
+| 무료 게임 가격 | `data: []` |
+| 레이트리밋 헤더 | 없음 (`cache-control: max-age` 120~7200만 있음) |
+
+**변경**
+- `app/models.py`: `GameMetadata`, `FetchStatus` (PostgreSQL enum `fetch_status`)
+- `migrations/versions/25542961bbf2_create_game_metadata.py`: 첫 마이그레이션. 자동 생성본의 downgrade가 enum 타입을 남겨 재적용이 실패하는 문제를 수정
+- `app/steam/store_api.py`: appdetails 클라이언트, 결과를 `OK/NOT_FOUND/RATE_LIMITED/ERROR`로 분류(403도 일시 제한으로 취급 [추정])
+- `app/infra/rate_limit.py`: 토큰 버킷(시계 주입), `pause()`
+- `app/metadata/state.py`: 상태 전이·재조회 판단 순수 함수
+- `app/metadata/service.py`: `lookup()`(DB 조회 + 대상 PENDING 기록 + 대기열 등록, 즉시 반환), 워커(레이트리미터 → 조회 → upsert), 진행 중 중복 방지, 워커 예외 격리
+- `app/metadata/coverage.py`: `metadataCoverage`·`metadataSnapshotAt` 계산
+- `/me/library`: 게임별 `metadataStatus`·`appType`·`genres`, `metadataCoverage`, `metadataSnapshotAt` 추가
+- `app/schemas.py`: `CamelModel` 공용화, 설정에 상점·캐시 값 추가
+- CI: `alembic check`(모델과 마이그레이션 일치 검사) 추가
+- 프론트: API 타입 재생성(화면 변경은 4단계)
+
+**검증**
+| 항목 | 결과 |
+|---|---|
+| pytest (DB 포함) | 114 passed / DB 없이 104 passed, 10 skipped [확인] |
+| 상태 전이 표 테스트 | 429·5xx·타임아웃·스키마 불일치 × 이전 상태 4종 → 항상 TEMPORARY_ERROR [확인] |
+| DB 통합 테스트 | 부분 응답 후 보강, 동시 5회 lookup → 게임당 1회 조회, 429 → 일시 오류 + 정지, success:false 2회 → 확정, stale PENDING 복구, 신선한 PENDING 중복 방지, 만료 SUCCESS 갱신 실패 시 장르 유지, 워커 예외 후 생존 [확인] |
+| Alembic up→down→up, `alembic check` | 통과 [확인] |
+| 실계정(58개) 보강 | 첫 응답 pending 58 → 약 90초 후 success 55 / 일시 오류 3(`store_not_found`, 1시간 뒤 재확인) / 429 0회. 상위 장르 Strategy·Action·Indie·Simulation [확인] |
+| FE lint / typecheck | 통과 [확인] |
+
+**참고**
+- 58개에 약 90초 = 설정 속도(0.6회/초)대로 동작. 1,000개 라이브러리는 약 28분 예상 → 4단계 화면에서 진행률 표시 필요
+- 단일 프로세스 전제: 대기열·진행 중 목록은 메모리. 서버 재시작 시 PENDING은 10분 뒤 다음 요청에서 복구
 
 ---
 
@@ -184,7 +227,9 @@
 | `communityvisibilitystate` 1 = 프로필 비공개 (공개 = 3은 확인) | 2단계 |
 | 게임 0개 계정의 GetOwnedGames 응답 형태(`game_count: 0` 여부) | 2단계 |
 | 로그인해도 비공개 라이브러리 조회 불가 (서버는 API 키로 조회하므로 로그인 여부와 무관 — 구조상 성립) | 2단계, 실계정 비공개 전환 테스트는 생략 |
-| store appdetails 레이트리밋(약 200회/5분) | 3a단계 |
+| store appdetails 레이트리밋(약 200회/5분) — 0.6회/초로 58건 무오류, 한도 자체는 미확인 | 운영 관찰 |
+| 상점이 과다 요청 시 403을 주는지 | 운영 관찰 |
+| `success:false` 3건(378120, 482750, 623990)이 1시간 뒤 재확인에서 NOT_AVAILABLE로 확정되는지 | 3b 작업 중 확인 |
 | featuredcategories 스키마, GetMostPlayedGames 공개 접근 | 3b단계 스파이크 |
 | appdetails `filters=price_overview` 다중 appid 지원 | 5단계 |
 | IWishlistService/GetWishlist 공개 접근·응답 형식 (비문서화) | 5단계 |
@@ -196,6 +241,7 @@
 ## 로컬 개발 메모
 
 - DB: `docker compose up -d db` (호스트 5433), 테스트 DB `steammate_test`는 컨테이너 안에 수동 생성
+- 마이그레이션: `cd backend && alembic upgrade head` (서버 실행 전 필요), 모델 변경 후 `alembic revision --autogenerate -m "..."` → 생성 파일 검토(enum 정리 등) → `alembic check`
 - DB 테스트 실행: `cd backend && TEST_DATABASE_URL=postgresql+asyncpg://steammate:steammate@localhost:5433/steammate_test pytest`
 - 백엔드: `cd backend && source .venv/Scripts/activate && uvicorn app.main:app --reload` (`backend/.env`에 `SESSION_SECRET` 필요)
 - 프론트: `cd frontend && npm run dev` (`/api/*`는 `BACKEND_URL`로 프록시)
