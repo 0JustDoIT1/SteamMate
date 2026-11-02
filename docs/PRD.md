@@ -162,7 +162,7 @@ Browser ─ Next.js (App Router, client: TanStack Query + Zustand)
 - PostgreSQL에는 공개 게임 데이터와 공개 집계 데이터만 저장한다.
 
 ## PostgreSQL
-- `game_metadata(appid PK, name, genres_json, categories_json, dlc_appids_json, fetch_status ENUM, fetched_at, expires_at, last_checked_at, retry_after, failure_reason)`
+- `game_metadata(appid PK, name, app_type, genres_json, categories_json, dlc_appids_json, fetch_status ENUM, fetched_at, expires_at, last_checked_at, retry_after, failure_reason)` — `app_type`은 Steam `type`(game·dlc·demo·music 등), 추천·대시보드에서 비게임 제외용. 게임 단위 공용 데이터이며 사용자 정보와 연결하지 않는다.
 - `game_price((appid, cc) PK, currency, initial_price, final_price, discount_percent, is_free, fetch_status ENUM, fetched_at, expires_at, retry_after, failure_reason)` — TTL 기본 1시간(임시)
 - `chart_snapshot(id PK, source ENUM(MOST_PLAYED|TOP_SELLERS|SPECIALS|NEW_RELEASES), cc, captured_at, status, failure_reason)`
 - `chart_entry((snapshot_id FK, rank) PK, appid, metric_value NULL)` + appid 인덱스. 12주(임시) 후 삭제.
