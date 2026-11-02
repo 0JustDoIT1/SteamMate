@@ -2,7 +2,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Annotated
 
-from pydantic import field_validator
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 # 실행 위치(CWD)와 무관하게 backend/.env를 읽는다.
@@ -18,6 +18,15 @@ class Settings(BaseSettings):
     # "a,b" 콤마 구분과 '["a","b"]' JSON 배열 모두 허용
     cors_origins: Annotated[list[str], NoDecode] = ["http://localhost:3000"]
     steam_timeout_seconds: float = 10.0
+    # 세션 쿠키 서명 키. 서버에만 보관하며 32자 이상이어야 한다.
+    session_secret: str = Field(min_length=32)
+    session_max_age_seconds: int = 7 * 24 * 3600
+    # 브라우저가 접속하는 프론트 주소. OpenID realm·return_to와 로그인 후 이동에 쓴다.
+    public_base_url: str = "http://localhost:3000"
+
+    @property
+    def cookie_secure(self) -> bool:
+        return self.app_env not in ("local", "test")
 
     @field_validator("cors_origins", mode="before")
     @classmethod

@@ -1,0 +1,60 @@
+{
+  "_note": "GetOwnedGames 실제 응답 구조(2026-11-03 확인)를 따르되 값은 가공한 테스트 데이터",
+  "response": {
+    "game_count": 4,
+    "games": [
+      {
+        "appid": 620,
+        "name": "Portal 2",
+        "playtime_forever": 1250,
+        "img_icon_url": "abc123",
+        "has_community_visible_stats": true,
+        "playtime_windows_forever": 1250,
+        "playtime_mac_forever": 0,
+        "playtime_linux_forever": 0,
+        "playtime_deck_forever": 0,
+        "rtime_last_played": 1760000000,
+        "playtime_disconnected": 0
+      },
+      {
+        "appid": 440,
+        "name": "Team Fortress 2",
+        "playtime_2weeks": 90,
+        "playtime_forever": 3000,
+        "img_icon_url": "def456",
+        "has_community_visible_stats": true,
+        "playtime_windows_forever": 3000,
+        "playtime_mac_forever": 0,
+        "playtime_linux_forever": 0,
+        "playtime_deck_forever": 0,
+        "rtime_last_played": 1761900000,
+        "playtime_disconnected": 0,
+        "content_descriptorids": [2, 5]
+      },
+      {
+        "appid": 400,
+        "name": "Portal",
+        "playtime_forever": 0,
+        "img_icon_url": "",
+        "playtime_windows_forever": 0,
+        "playtime_mac_forever": 0,
+        "playtime_linux_forever": 0,
+        "playtime_deck_forever": 0,
+        "rtime_last_played": 0,
+        "playtime_disconnected": 0
+      },
+      {
+        "appid": 570,
+        "name": "Dota 2",
+        "playtime_forever": 1250,
+        "img_icon_url": "ghi789",
+        "playtime_windows_forever": 1250,
+        "playtime_mac_forever": 0,
+        "playtime_linux_forever": 0,
+        "playtime_deck_forever": 0,
+        "rtime_last_played": 1750000000,
+        "playtime_disconnected": 0
+      }
+    ]
+  }
+}
