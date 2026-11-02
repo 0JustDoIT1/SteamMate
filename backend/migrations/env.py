@@ -1,16 +1,17 @@
 import asyncio
 from logging.config import fileConfig
 
+from alembic import context
 from sqlalchemy import pool
 from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import async_engine_from_config
 
-from alembic import context
+from app.config import get_settings
+from app.db import Base
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
 config = context.config
-from app.config import get_settings
 config.set_main_option("sqlalchemy.url", get_settings().database_url)
 
 # Interpret the config file for Python logging.
@@ -18,11 +19,8 @@ config.set_main_option("sqlalchemy.url", get_settings().database_url)
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
-# add your model's MetaData object here
-# for 'autogenerate' support
-# from myapp import mymodel
-# target_metadata = mymodel.Base.metadata
-target_metadata = None
+# 모델 모듈은 app.db.Base를 상속하며, 추가 시 여기서 import해 metadata에 등록한다.
+target_metadata = Base.metadata
 
 # other values from the config, defined by the needs of env.py,
 # can be acquired:

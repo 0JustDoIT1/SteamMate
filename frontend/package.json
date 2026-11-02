@@ -6,21 +6,27 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "typecheck": "tsc --noEmit",
+    "gen:api": "openapi-typescript http://localhost:8000/openapi.json -o src/lib/api/schema.d.ts"
   },
   "dependencies": {
+    "@tanstack/react-query": "^5.105.2",
     "next": "16.4.3",
     "react": "19.3.0",
-    "react-dom": "19.3.0"
+    "react-dom": "19.3.0",
+    "zustand": "^5.0.16"
   },
   "devDependencies": {
     "@tailwindcss/turbopack": "^4",
+    "@tanstack/react-query-devtools": "^5.105.2",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "babel-plugin-react-compiler": "1.0.0",
     "eslint": "^9",
     "eslint-config-next": "16.4.3",
+    "openapi-typescript": "^7.13.0",
     "tailwindcss": "^4",
     "typescript": "^5"
   }
