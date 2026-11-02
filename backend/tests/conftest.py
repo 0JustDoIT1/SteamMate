@@ -17,6 +17,7 @@ os.environ["APP_ENV"] = "test"
 
 from app.config import get_settings
 from app.db import dispose_engine
+from tests.fakes import FakeMetadata
 
 FIXTURES = Path(__file__).parent / "fixtures"
 TEST_STEAM_ID = "76561198000000001"  # 실제 계정이 아닌 테스트용 값
@@ -48,18 +49,50 @@ def steam_handler() -> dict[str, Handler]:
 
 
 @pytest.fixture
-async def client(steam_handler) -> AsyncIterator[httpx.AsyncClient]:
+def fake_metadata() -> FakeMetadata:
+    return FakeMetadata()
+
+
+@pytest.fixture
+async def client(steam_handler, fake_metadata) -> AsyncIterator[httpx.AsyncClient]:
     get_settings.cache_clear()
     from app.main import create_app
 
     external = httpx.AsyncClient(transport=httpx.MockTransport(lambda r: steam_handler["fn"](r)))
-    app = create_app(http=external)
+    app = create_app(http=external, metadata=fake_metadata)
     transport = httpx.ASGITransport(app=app, raise_app_exceptions=False)
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as ac:
         ac.app = app  # 테스트에서 세션 발급 등에 사용
         yield ac
     await external.aclose()
     await dispose_engine()
+
+
+@pytest.fixture(scope="session")
+def migrated_db() -> str:
+    """테스트 DB에 실제 Alembic 마이그레이션을 적용한다(create_all을 쓰지 않는다)."""
+    if not TEST_DATABASE_URL:
+        pytest.skip("TEST_DATABASE_URL 미설정")
+    from alembic import command
+    from alembic.config import Config
+
+    cfg = Config(str(Path(__file__).parent.parent / "alembic.ini"))
+    command.downgrade(cfg, "base")
+    command.upgrade(cfg, "head")
+    return TEST_DATABASE_URL
+
+
+@pytest.fixture
+async def db_sessionmaker(migrated_db) -> AsyncIterator:
+    """테스트마다 새 엔진(이벤트 루프 분리)과 빈 테이블을 쓴다."""
+    from sqlalchemy import text
+    from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+
+    engine = create_async_engine(migrated_db)
+    async with engine.begin() as conn:
+        await conn.execute(text("TRUNCATE game_metadata"))
+    yield async_sessionmaker(engine, expire_on_commit=False)
+    await engine.dispose()
 
 
 @pytest.fixture

@@ -24,6 +24,20 @@ class Settings(BaseSettings):
     # 브라우저가 접속하는 프론트 주소. OpenID realm·return_to와 로그인 후 이동에 쓴다.
     public_base_url: str = "http://localhost:3000"
 
+    # Steam 상점(appdetails) 메타데이터 캐시 — 값은 임시이며 측정 후 조정한다(DEVLOG 3a 참조).
+    store_cc: str = "kr"
+    store_language: str = "english"
+    store_rate_per_second: float = 0.6
+    store_burst: int = 10
+    store_concurrency: int = 4
+    store_rate_limit_pause_seconds: int = 60
+    metadata_success_ttl_seconds: int = 7 * 24 * 3600
+    metadata_not_available_ttl_seconds: int = 30 * 24 * 3600
+    metadata_retry_error_seconds: int = 5 * 60
+    metadata_retry_rate_limited_seconds: int = 15 * 60
+    metadata_retry_not_found_seconds: int = 60 * 60
+    metadata_pending_stale_seconds: int = 10 * 60
+
     @property
     def cookie_secure(self) -> bool:
         return self.app_env not in ("local", "test")

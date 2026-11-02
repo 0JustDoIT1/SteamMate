@@ -6,6 +6,7 @@ from sqlalchemy import pool
 from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import async_engine_from_config
 
+import app.models  # noqa: F401  모델을 Base.metadata에 등록
 from app.config import get_settings
 from app.db import Base
 
@@ -19,7 +20,7 @@ config.set_main_option("sqlalchemy.url", get_settings().database_url)
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
-# 모델 모듈은 app.db.Base를 상속하며, 추가 시 여기서 import해 metadata에 등록한다.
+# 모델은 app.models에서 app.db.Base를 상속해 정의한다(위 import로 등록).
 target_metadata = Base.metadata
 
 # other values from the config, defined by the needs of env.py,

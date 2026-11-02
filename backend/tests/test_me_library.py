@@ -1,6 +1,10 @@
+from datetime import UTC, datetime
+
 import httpx
 import pytest
 
+from app.metadata.service import MetadataSnapshot
+from app.models import FetchStatus
 from tests.conftest import TEST_STEAM_ID, load_fixture
 
 OWNED = "/IPlayerService/GetOwnedGames/v1/"
@@ -120,6 +124,30 @@ async def test_timeout_maps_to_steam_timeout(client, login, steam_handler):
     res = await client.get("/me/library")
     assert res.status_code == 504
     assert res.json()["error"]["code"] == "STEAM_TIMEOUT"
+
+
+async def test_library_includes_genres_and_coverage(client, login, steam_handler, fake_metadata):
+    t = datetime(2026, 11, 2, tzinfo=UTC)
+    fake_metadata.snapshots = {
+        440: MetadataSnapshot(440, FetchStatus.SUCCESS, "game", ("Action", "Free To Play"), t),
+        620: MetadataSnapshot(620, FetchStatus.TEMPORARY_ERROR),
+        400: MetadataSnapshot(400, FetchStatus.NOT_AVAILABLE, "music"),
+        # 570: 캐시에 없음 → PENDING
+    }
+    steam_handler["fn"] = routes(**{OWNED: load_fixture("steam/owned_games_public.json")})
+    login()
+
+    body = (await client.get("/me/library")).json()
+
+    by_id = {g["appid"]: g for g in body["games"]}
+    assert by_id[440]["genres"] == ["Action", "Free To Play"] and by_id[440]["metadataStatus"] == "SUCCESS"
+    assert by_id[570]["metadataStatus"] == "PENDING" and by_id[570]["genres"] == []
+    assert by_id[400]["appType"] == "music"
+    assert body["metadataCoverage"] == {
+        "success": 1, "pending": 1, "temporaryError": 1, "notAvailable": 1, "total": 4, "ratio": 0.3333,
+    }
+    assert body["metadataSnapshotAt"].startswith("2026-11-02")
+    assert sorted(fake_metadata.requested[0]) == [400, 440, 570, 620]
 
 
 async def test_no_steam_id_parameter_accepted(client, login, steam_handler):

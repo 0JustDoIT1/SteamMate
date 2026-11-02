@@ -4,14 +4,13 @@ from urllib.parse import urlencode
 import httpx
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import RedirectResponse, Response
-from pydantic import BaseModel, ConfigDict
-from pydantic.alias_generators import to_camel
 
 from app.auth.session import COOKIE_NAME, SessionManager
 from app.auth.steam_openid import NonceStore, build_login_url, verify_callback
 from app.config import get_settings
 from app.deps import current_steam_id, get_http, get_nonces, get_sessions
 from app.errors import AppError
+from app.schemas import CamelModel
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -19,9 +18,7 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 CALLBACK_PATH = "/api/auth/steam/callback"
 
 
-class MeResponse(BaseModel):
-    model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True)
-
+class MeResponse(CamelModel):
     steam_id: str
 
 

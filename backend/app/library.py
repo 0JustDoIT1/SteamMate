@@ -1,19 +1,19 @@
-"""로그인한 사용자 본인의 Steam 라이브러리 조회. 결과는 저장하지 않는다(PRD 개인 데이터 비저장)."""
+"""로그인한 사용자 본인의 Steam 라이브러리 조회. 결과는 저장하지 않는다(PRD 개인 데이터 비저장).
+
+게임 장르는 공용 메타데이터 캐시에서 붙인다. 캐시에 없는 게임은 백그라운드로 보강되고 응답은 기다리지 않는다.
+"""
 
 from datetime import UTC, datetime
 
-from pydantic import BaseModel, ConfigDict
-from pydantic.alias_generators import to_camel
-
 from app.errors import AppError, ErrorCode
+from app.metadata.coverage import MetadataCoverage, compute_coverage, snapshot_at
+from app.metadata.service import MetadataLookup, MetadataSnapshot
+from app.models import FetchStatus
+from app.schemas import CamelModel
 from app.steam.web_api import PUBLIC_VISIBILITY, OwnedGame, SteamWebApi
 
 ICON_URL = "https://media.steampowered.com/steamcommunity/public/images/apps/{appid}/{hash}.jpg"
 PRIVACY_SETTINGS_URL = "https://steamcommunity.com/my/edit/settings"
-
-
-class CamelModel(BaseModel):
-    model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True)
 
 
 class LibraryGame(CamelModel):
@@ -23,6 +23,9 @@ class LibraryGame(CamelModel):
     playtime_2weeks: int
     last_played_at: datetime | None
     icon_url: str | None
+    metadata_status: FetchStatus
+    app_type: str | None
+    genres: list[str]
 
 
 class LibrarySummary(CamelModel):
@@ -37,16 +40,20 @@ class LibraryResponse(CamelModel):
     game_count: int
     games: list[LibraryGame]
     summary: LibrarySummary
+    metadata_coverage: MetadataCoverage
+    metadata_snapshot_at: datetime | None
     fetched_at: datetime
 
 
-async def fetch_library(api: SteamWebApi, steam_id: str) -> LibraryResponse:
+async def fetch_library(api: SteamWebApi, metadata: MetadataLookup, steam_id: str) -> LibraryResponse:
     body = await api.get_owned_games(steam_id)
     if body.games is None and body.game_count is None:
         await _raise_private_reason(api, steam_id)
 
+    owned = body.games or []
+    snapshots = await metadata.lookup(g.appid for g in owned)
     games = sorted(
-        (_to_library_game(g) for g in body.games or []),
+        (_to_library_game(g, snapshots.get(g.appid)) for g in owned),
         key=lambda g: (-g.playtime_forever, g.appid),
     )
     return LibraryResponse(
@@ -54,6 +61,8 @@ async def fetch_library(api: SteamWebApi, steam_id: str) -> LibraryResponse:
         game_count=len(games),
         games=games,
         summary=summarize(games),
+        metadata_coverage=compute_coverage((g.appid for g in owned), snapshots),
+        metadata_snapshot_at=snapshot_at(snapshots.values()),
         fetched_at=datetime.now(UTC),
     )
 
@@ -69,7 +78,7 @@ async def _raise_private_reason(api: SteamWebApi, steam_id: str) -> None:
     raise AppError(ErrorCode.LIBRARY_PRIVATE, f"{message} ({PRIVACY_SETTINGS_URL})", 403)
 
 
-def _to_library_game(game: OwnedGame) -> LibraryGame:
+def _to_library_game(game: OwnedGame, meta: MetadataSnapshot | None) -> LibraryGame:
     return LibraryGame(
         appid=game.appid,
         name=game.name or f"App {game.appid}",
@@ -77,6 +86,9 @@ def _to_library_game(game: OwnedGame) -> LibraryGame:
         playtime_2weeks=game.playtime_2weeks or 0,
         last_played_at=datetime.fromtimestamp(game.rtime_last_played, UTC) if game.rtime_last_played else None,
         icon_url=ICON_URL.format(appid=game.appid, hash=game.img_icon_url) if game.img_icon_url else None,
+        metadata_status=meta.status if meta else FetchStatus.PENDING,
+        app_type=meta.app_type if meta else None,
+        genres=list(meta.genres) if meta and meta.status is FetchStatus.SUCCESS else [],
     )
 
 

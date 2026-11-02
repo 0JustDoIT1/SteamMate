@@ -7,6 +7,7 @@ from app.auth.session import COOKIE_NAME, SessionManager
 from app.auth.steam_openid import NonceStore
 from app.config import get_settings
 from app.errors import AppError, ErrorCode
+from app.metadata.service import MetadataLookup
 from app.steam.web_api import SteamWebApi
 
 
@@ -20,6 +21,10 @@ def get_sessions(request: Request) -> SessionManager:
 
 def get_nonces(request: Request) -> NonceStore:
     return request.app.state.nonces
+
+
+def get_metadata(request: Request) -> MetadataLookup:
+    return request.app.state.metadata
 
 
 def get_steam_api(request: Request) -> SteamWebApi:
