@@ -3,18 +3,16 @@
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 
-// 전역 클라이언트 상태만 둔다. 서버 데이터(라이브러리·추천·할인 등)는 TanStack Query 캐시에 둔다.
+// 전역 클라이언트 상태만 둔다. 로그인 상태(steamId)를 포함한 서버 데이터는 TanStack Query 캐시에 둔다.
 export type RecommendationOptions = {
   preferUnplayed: boolean;
 };
 
 type AppState = {
-  steamId: string | null;
   cc: string;
   recOptions: RecommendationOptions;
   excludedAppids: number[];
   selectedAppid: number | null;
-  setSteamId: (steamId: string | null) => void;
   setCc: (cc: string) => void;
   setRecOptions: (options: Partial<RecommendationOptions>) => void;
   toggleExcluded: (appid: number) => void;
@@ -24,12 +22,10 @@ type AppState = {
 export const useAppStore = create<AppState>()(
   persist(
     (set) => ({
-      steamId: null,
       cc: "kr",
       recOptions: { preferUnplayed: true },
       excludedAppids: [],
       selectedAppid: null,
-      setSteamId: (steamId) => set({ steamId }),
       setCc: (cc) => set({ cc }),
       setRecOptions: (options) => set((s) => ({ recOptions: { ...s.recOptions, ...options } })),
       toggleExcluded: (appid) =>
