@@ -18,7 +18,17 @@
       "Write(./**/.env.test)"
     ],
     "ask": [
-      "Edit(./docs/PRD.md)"
+      "Edit(./docs/PRD.md)",
+      "Bash(npm install *)",
+      "Bash(npm i *)",
+      "Bash(npm add *)",
+      "Bash(npm --prefix * install *)",
+      "Bash(npx * install *)",
+      "Bash(pip install *)",
+      "Bash(python -m pip install *)",
+      "Bash(*pip.exe install *)",
+      "Bash(uv add *)",
+      "Bash(uv pip install *)"
     ]
   },
   "hooks": {
