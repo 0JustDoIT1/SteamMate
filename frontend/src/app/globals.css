@@ -3,11 +3,21 @@
 :root {
   --background: #ffffff;
   --foreground: #171717;
+  /* shadcn/ui chart가 쓰는 최소 토큰 */
+  --muted: #f4f4f5;
+  --muted-foreground: #71717a;
+  --border: #e4e4e7;
+  /* 차트 계열 색: dataviz 기본 팔레트 1번(파랑), 각 배경에서 검증(validate_palette.js 통과) */
+  --chart-1: #2a78d6;
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-border: var(--border);
+  --color-chart-1: var(--chart-1);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }
@@ -16,10 +26,21 @@
   :root {
     --background: #0a0a0a;
     --foreground: #ededed;
+    --muted: #18181b;
+    --muted-foreground: #a1a1aa;
+    --border: #27272a;
+    --chart-1: #3987e5;
   }
 }
 
+/* 탭마다 페이지 높이가 달라 세로 스크롤바가 생겼다 사라지면 폭이 바뀌어 헤더·본문이 좌우로 밀림.
+   본문 폭을 창 전체(100vw)로 고정해 스크롤바 유무와 관계없이 가운데 위치를 같게 하고, 스크롤바 밑으로 들어간 부분 때문에 가로 스크롤이 생기지 않게 막는다. */
+html {
+  overflow-x: hidden;
+}
+
 body {
+  width: 100vw;
   background: var(--background);
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
