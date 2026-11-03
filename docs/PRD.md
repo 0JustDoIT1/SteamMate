@@ -5,6 +5,8 @@
 > **v6 (2026-11-03, 사용자 승인)**: Steam 로그인, 할인(위시리스트·DLC·미보유 게임 추천), 인기 대시보드, 점수 기반 추천 이유 추가. API 경로·응답 형식·데이터 모델·오류 코드 통일. 릴리스를 R1/R2로 분할.
 >
 > **v6.1 (2026-11-03, 사용자 승인)**: 로그인 필수 — 개인 데이터는 로그인한 본인 것만 조회(SteamID·URL 직접 입력 제거, `/me/*` API). 구현 순서를 로그인 → 대시보드 → 기능으로 재배치.
+>
+> **v6.2 (2026-11-03, 사용자 승인)**: F3 점수 확정(미플레이 우선 가중치, 장르 수집 중 임시 추천은 미플레이 제외). F3·F4ⓒ를 "내 취향 추천" 한 영역의 탭으로 표시. F4ⓒ를 정가 게임까지 확대(할인 중만 보기 필터).
 
 ---
 
@@ -25,7 +27,7 @@ Steam 로그인한 사용자의 공개 라이브러리에서 플레이 패턴과
 | F1 | Steam 로그인 | Steam OpenID 로그인 필수(개인 기능). 로그인은 본인 SteamID 확인용이며 비공개 라이브러리 접근 권한을 주지 않음. 다른 사용자의 SteamID·URL 조회 기능은 제공하지 않음 |
 | F2 | 라이브러리 분석 | 본인 GetOwnedGames 실조회; 플레이 시간·장르 분포; 비공개 시 설정 안내(프로필 비공개/게임 세부정보 비공개 구분); 커버리지 n/m 노출 |
 | F3 | 보유 게임 추천 | 보유 게임 중 TOP 3, 점수 요소별 이유·모드·조회 기준 시각 포함; 미플레이/저플레이 우선 옵션 |
-| F4 | 할인 | ⓐ 위시리스트 할인 ⓑ 보유 게임 DLC 할인 ⓒ 미보유 할인 게임 추천(취향 점수, 후보 풀 크기 표시) |
+| F4 | 할인 | ⓐ 위시리스트 할인 ⓑ 보유 게임 DLC 할인 ⓒ 미보유 게임 추천(정가 포함, 할인 중만 보기 필터; 취향 점수, 후보 풀 크기 표시) |
 | F5 | 인기 대시보드 | 이번 주 인기·최다 플레이·할인·신작, 순위 변화; 비로그인 열람 가능, 로그인 시 보유·위시리스트·취향 매칭 표시 |
 | F6 | 업데이트 AI | GetNewsForApp 요청 시 획득 → BBCode/HTML 정제 → 작은 코퍼스는 Full Context, 큰 경우 임시 RAG → 원문 링크; 근거 부족 시 응답 제한 |
 
@@ -33,7 +35,9 @@ Steam 로그인한 사용자의 공개 라이브러리에서 플레이 패턴과
 
 **릴리스 분할**: R1 = F1~F5 + F6의 뉴스 목록·원문 링크 / R2 = F6 AI 질문. F6(Full Context vs RAG)은 핵심 기술 문제이므로 R2에서 반드시 수행한다.
 
-**F4ⓒ 한계**: Steam 전체 할인 목록을 제공하는 공식 API가 없다. 후보 풀은 Steam 할인·인기·신작 목록에 오른 게임으로 제한하고 응답에 후보 수를 표시한다. 상점 검색 HTML 스크래핑은 하지 않는다.
+**F4ⓒ 한계**: Steam 전체 게임·할인 목록을 제공하는 공식 API가 없다. 후보 풀은 Steam 할인·인기·신작 목록에 오른 게임으로 제한하고 응답에 후보 수를 표시한다. 상점 검색 HTML 스크래핑은 하지 않는다.
+
+**추천 화면 구성**: F3(보유 게임 추천)과 F4ⓒ(미보유 게임 추천)는 `/me`의 "내 취향 추천" 한 영역에 "가진 게임 중 / 살 만한 게임" 탭으로 표시한다. API와 점수 계산은 분리한다. F4ⓐⓑ(위시리스트·DLC 할인)는 별도 "할인" 영역에 둔다.
 
 **제외**: 타인 SteamID 조회, 친구 비교, 알림, 사용자 계정 DB, 추천 이력 저장, Hybrid 검색(2차 실험).
 
@@ -141,10 +145,11 @@ Browser ─ Next.js (App Router, client: TanStack Query + Zustand)
 3. appid별 캐시 일괄 조회 후 누락·만료 게임만 제한된 동시성으로 appdetails 조회. 오래된 PENDING은 재시도 대상.
 4. 커버리지 = success / (total − notAvailable). 진행 중·일시 실패 수량도 명시. 기준 미달 시 PLAYTIME_BASED, 충족 시 GENRE_AWARE.
 5. 추천 결과에 `metadataSnapshotAt`, `metadataCoverage`, `recommendationMode`, `calculatedAt`, 항목별 `reasons` 포함. 동점은 appid 오름차순.
+6. 후보가 0개면 오류 대신 빈 `recommendations`와 `candidateCount: 0`을 응답하고 화면에서 후보 조건을 안내한다.
 
 ### 3. 할인·대시보드
 1. collector가 featuredcategories·차트 스냅샷을 저장하고, 포함된 appid의 메타데이터·가격을 보강한다.
-2. 미보유 할인 추천 후보 = 최신 스냅샷 풀 − 보유 게임, `discount_percent > 0`.
+2. 미보유 게임 추천 후보 = 최신 스냅샷 풀 − 보유 게임(정가 포함). "할인 중만 보기" 필터 시 `discount_percent > 0`.
 3. 대시보드는 소스별 `snapshotAt`과 이전 스냅샷 대비 순위 변화를 표시한다. 로그인 상태면 세션 steamId로 개인화한다.
 
 ### 4. 업데이트 AI
@@ -156,7 +161,7 @@ Browser ─ Next.js (App Router, client: TanStack Query + Zustand)
 ## 프론트엔드 상태 관리
 - **TanStack Query**: 서버 데이터 전부(`['me']`(로그인 상태), `['library']`, `['recs',opts]`, `['deals',cc]`, `['dashboard',cc]`, `['news',appid]`, `useMutation(ask)`). coverage < 100%면 `refetchInterval` 폴링.
 - **Zustand**: 전역 클라이언트 상태(`recOptions`, `excludedAppids`(persist), `selectedAppid`, `cc`). 로그인 상태·steamId를 포함한 서버 데이터를 복제하지 않는다. 클라이언트 컴포넌트에서만 사용.
-- 화면: `/` 대시보드 + 로그인 버튼 → `/me` 내 분석·추천·할인 → `/news/[appid]` 뉴스·질문.
+- 화면: `/` 대시보드 + 로그인 버튼 → `/me` 내 분석·내 취향 추천(가진 게임 중 / 살 만한 게임 탭)·할인 → `/news/[appid]` 뉴스·질문.
 
 ---
 
@@ -252,13 +257,15 @@ Browser ─ Next.js (App Router, client: TanStack Query + Zustand)
 
 ---
 
-# 점수 설계 (초안 — 해당 단계 착수 시 확정)
+# 점수 설계 (F3 확정, F4 초안 — 해당 단계 착수 시 확정)
 
-- **장르 선호도**: 장르별 `Σ log1p(playtime_min)`, 합 1 정규화 (F3·F4·F5 공용)
-- **보유 게임 추천(F3)**: 후보 = 플레이시간 < 120분(임시)
-  - GENRE_AWARE: `0.6·genreMatch + 0.3·unplayed + 0.1·recentGenre`
-  - PLAYTIME_BASED: 장르 요소 제외, 이유에 "장르 정보 부족" 명시
-- **미보유 할인 추천(F4ⓒ)**: `0.5·genreMatch + 0.3·discountNorm + 0.2·popularity` (popularity = 풀 내 최고 순위 역수). reasons: `GENRE_MATCH`, `DISCOUNT`, `POPULAR`, `WISHLISTED`
+- **장르 선호도**: 장르별 `Σ log1p(playtime_min)`, 합 1 정규화 (F3·F4·F5 공용, 라이브러리 장르 분포도 같은 값). 미플레이 게임은 기여하지 않는다.
+- **보유 게임 추천(F3, 확정)**: 후보 = 플레이시간 < 120분(임시), 게임이 아닌 것으로 확인된 앱(DLC·데모 등)·사용자 제외 게임 제외
+  - 요소: `unplayed = 1 − 분/120`, `genreMatch`·`recentGenre` = 게임 장르의 선호도 합(전체 / 최근 2주 플레이 기준), `recentlyPlayed` = 90일 안에 실행 시 1
+  - GENRE_AWARE: `0.6·genreMatch + 0.3·unplayed + 0.1·recentGenre`, 미플레이 우선 시 `0.45 / 0.5 / 0.05`
+  - PLAYTIME_BASED(장르 수집 중 임시 추천 "이어서 하기"): 미플레이(0분) 게임은 순서 근거가 없어 후보에서 제외, `0.7·unplayed + 0.3·recentlyPlayed`, 미플레이 우선 옵션 미적용. 이유에 "장르 정보 수집 중" 명시
+  - `contribution` 합 = `score`
+- **미보유 게임 추천(F4ⓒ, 초안)**: 정가 게임 포함 `0.6·genreMatch + 0.2·popularity + 0.2·discountNorm` (popularity = 풀 내 최고 순위 역수, 정가 게임은 discountNorm 0). "할인 중만 보기" 필터 제공. reasons: `GENRE_MATCH`, `DISCOUNT`, `POPULAR`, `WISHLISTED`. 응답 형식(`/me/deals`의 `storeDeals` 유지 여부)과 후보 가격 수집 비용은 5단계 착수 시 확정
 - **위시리스트·DLC 할인 정렬**: affinity desc → 할인율 desc → appid. DLC 보유 여부는 확인 불가 시 "미확인" 표시.
 - 동점은 appid 오름차순.
 
@@ -320,7 +327,7 @@ Browser ─ Next.js (App Router, client: TanStack Query + Zustand)
 | 3a | game_metadata 캐시, store 레이트리미터·제한 동시 요청, 상태 전이, 부분 응답 | 429가 NOT_AVAILABLE이 되지 않음, migration up/down |
 | 3b | 소스 스파이크 → 차트 스냅샷·collector·대시보드 화면, 로그인 시 개인화 | 소스별 snapshotAt, 실패 소스 섹션 비표시 |
 | 4 | 라이브러리 분석(장르 분포·coverage 폴링) + 보유 게임 추천·이유, metadataSnapshotAt 재현성 | TOP3·이유·모드·스냅샷 |
-| 5 | game_price, 위시리스트·DLC·미보유 할인 추천 | 3종 할인 목록, 후보 풀 크기, `DATA_NOT_READY` |
+| 5 | game_price, 위시리스트·DLC 할인, 미보유 게임 추천(정가 포함), "내 취향 추천" 탭 화면 | 3종 목록, 후보 풀 크기, `DATA_NOT_READY` |
 | 6 | 뉴스 조회·BBCode/HTML 정제·원문 URL 보존 | 목록·원문 링크 (**R1 완료**) |
 | 7 | 합성 평가 데이터로 Full Context·RAG 구현 및 토큰 축 실험 | 실험 리포트, 임계값 제안 |
 | 8 | `/steam/news/ask`: TTL 메모리·출처 인용·LLM 실패 대응·기능 플래그 | 근거·출처 답변 (**R2 완료**) |
