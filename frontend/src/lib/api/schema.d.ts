@@ -106,6 +106,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/me/store-recommendations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** My Store Recommendations */
+        get: operations["my_store_recommendations_me_store_recommendations_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/me/deals": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** My Deals */
+        get: operations["my_deals_me_deals_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/steam/dashboard": {
         parameters: {
             query?: never;
@@ -235,6 +269,47 @@ export interface components {
             /** Trendtimes */
             trendTimes: string[];
         };
+        /** DealItem */
+        DealItem: {
+            /** Appid */
+            appid: number;
+            /** Name */
+            name: string;
+            /** Headerimage */
+            headerImage: string | null;
+            price: components["schemas"]["PriceInfo"];
+            /** Affinity */
+            affinity: number | null;
+            /** Storeurl */
+            storeUrl: string;
+            /** Baseappid */
+            baseAppid: number | null;
+            /** Basename */
+            baseName: string | null;
+        };
+        /** DealsResponse */
+        DealsResponse: {
+            /** Wishlistdeals */
+            wishlistDeals: components["schemas"]["DealItem"][];
+            wishlistStatus: components["schemas"]["WishlistStatus"];
+            /** Wishlistcount */
+            wishlistCount: number;
+            /** Dlcdeals */
+            dlcDeals: components["schemas"]["DealItem"][];
+            /** Dlcbasegamecount */
+            dlcBaseGameCount: number;
+            /** Dlccheckedcount */
+            dlcCheckedCount: number;
+            /** Pricepending */
+            pricePending: number;
+            /** Pricesnapshotat */
+            priceSnapshotAt: string | null;
+            /**
+             * Calculatedat
+             * Format: date-time
+             */
+            calculatedAt: string;
+        };
         /**
          * FetchStatus
          * @enum {string}
@@ -282,6 +357,8 @@ export interface components {
             lastPlayedAt: string | null;
             /** Iconurl */
             iconUrl: string | null;
+            /** Headerimage */
+            headerImage: string | null;
             metadataStatus: components["schemas"]["FetchStatus"];
             /** Apptype */
             appType: string | null;
@@ -354,6 +431,20 @@ export interface components {
             /** Entries */
             entries: components["schemas"]["DashboardEntry"][];
         };
+        /**
+         * PriceInfo
+         * @description 응답용 가격. 금액은 Steam 최소 단위×100.
+         */
+        PriceInfo: {
+            /** Currency */
+            currency: string;
+            /** Initialprice */
+            initialPrice: number;
+            /** Finalprice */
+            finalPrice: number;
+            /** Discountpercent */
+            discountPercent: number;
+        };
         /** Reason */
         Reason: {
             factor: components["schemas"]["ReasonFactor"];
@@ -366,7 +457,7 @@ export interface components {
          * ReasonFactor
          * @enum {string}
          */
-        ReasonFactor: "GENRE_MATCH" | "UNPLAYED" | "RECENT_GENRE" | "RECENTLY_PLAYED" | "LOW_GENRE_COVERAGE";
+        ReasonFactor: "GENRE_MATCH" | "UNPLAYED" | "RECENT_GENRE" | "RECENTLY_PLAYED" | "POPULAR" | "LOW_GENRE_COVERAGE";
         /** Recommendation */
         Recommendation: {
             /** Appid */
@@ -399,12 +490,58 @@ export interface components {
             candidateCount: number;
             /** Excludedcount */
             excludedCount: number;
-            /** Preferunplayed */
-            preferUnplayed: boolean;
             recommendationMode: components["schemas"]["RecommendationMode"];
             metadataCoverage: components["schemas"]["MetadataCoverage"];
             /** Metadatasnapshotat */
             metadataSnapshotAt: string | null;
+            /**
+             * Calculatedat
+             * Format: date-time
+             */
+            calculatedAt: string;
+        };
+        /** StoreRecommendation */
+        StoreRecommendation: {
+            /** Appid */
+            appid: number;
+            /** Name */
+            name: string;
+            /** Score */
+            score: number;
+            /** Genres */
+            genres: string[];
+            /** Headerimage */
+            headerImage: string | null;
+            price: components["schemas"]["PriceInfo"] | null;
+            /** Wishlisted */
+            wishlisted: boolean;
+            /** Storeurl */
+            storeUrl: string;
+            /** Reasons */
+            reasons: components["schemas"]["Reason"][];
+        };
+        /** StoreRecommendationsResponse */
+        StoreRecommendationsResponse: {
+            /** Recommendations */
+            recommendations: components["schemas"]["StoreRecommendation"][];
+            /** Candidatepoolsize */
+            candidatePoolSize: number;
+            /** Candidatecount */
+            candidateCount: number;
+            /** Metadatapending */
+            metadataPending: number;
+            /** Pricepending */
+            pricePending: number;
+            /** Onsaleonly */
+            onSaleOnly: boolean;
+            /** Wishlistchecked */
+            wishlistChecked: boolean;
+            recommendationMode: components["schemas"]["RecommendationMode"];
+            metadataCoverage: components["schemas"]["MetadataCoverage"];
+            /** Poolsnapshotat */
+            poolSnapshotAt: string | null;
+            /** Pricesnapshotat */
+            priceSnapshotAt: string | null;
             /**
              * Calculatedat
              * Format: date-time
@@ -424,6 +561,11 @@ export interface components {
             /** Context */
             ctx?: Record<string, never>;
         };
+        /**
+         * WishlistStatus
+         * @enum {string}
+         */
+        WishlistStatus: "OK" | "EMPTY_OR_PRIVATE" | "UNAVAILABLE";
     };
     responses: never;
     parameters: never;
@@ -534,7 +676,6 @@ export interface operations {
     my_recommendations_me_recommendations_get: {
         parameters: {
             query?: {
-                preferUnplayed?: boolean;
                 exclude?: number[];
             };
             header?: never;
@@ -559,6 +700,57 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    my_store_recommendations_me_store_recommendations_get: {
+        parameters: {
+            query?: {
+                onSaleOnly?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StoreRecommendationsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    my_deals_me_deals_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DealsResponse"];
                 };
             };
         };
