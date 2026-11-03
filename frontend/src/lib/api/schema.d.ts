@@ -89,6 +89,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/me/recommendations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** My Recommendations */
+        get: operations["my_recommendations_me_recommendations_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/steam/dashboard": {
         parameters: {
             query?: never;
@@ -239,6 +256,18 @@ export interface components {
             /** Withgenres */
             withGenres: number;
         };
+        /** GenreShare */
+        GenreShare: {
+            /** Genre */
+            genre: string;
+            /** Share */
+            share: number;
+        };
+        /** HTTPValidationError */
+        HTTPValidationError: {
+            /** Detail */
+            detail?: components["schemas"]["ValidationError"][];
+        };
         /** LibraryGame */
         LibraryGame: {
             /** Appid */
@@ -268,6 +297,8 @@ export interface components {
             /** Games */
             games: components["schemas"]["LibraryGame"][];
             summary: components["schemas"]["LibrarySummary"];
+            /** Genredistribution */
+            genreDistribution: components["schemas"]["GenreShare"][];
             metadataCoverage: components["schemas"]["MetadataCoverage"];
             /** Metadatasnapshotat */
             metadataSnapshotAt: string | null;
@@ -322,6 +353,76 @@ export interface components {
             weeksRequired: number;
             /** Entries */
             entries: components["schemas"]["DashboardEntry"][];
+        };
+        /** Reason */
+        Reason: {
+            factor: components["schemas"]["ReasonFactor"];
+            /** Detail */
+            detail: string | null;
+            /** Contribution */
+            contribution: number;
+        };
+        /**
+         * ReasonFactor
+         * @enum {string}
+         */
+        ReasonFactor: "GENRE_MATCH" | "UNPLAYED" | "RECENT_GENRE" | "RECENTLY_PLAYED" | "LOW_GENRE_COVERAGE";
+        /** Recommendation */
+        Recommendation: {
+            /** Appid */
+            appid: number;
+            /** Name */
+            name: string;
+            /** Score */
+            score: number;
+            /** Playtimeforever */
+            playtimeForever: number;
+            /** Lastplayedat */
+            lastPlayedAt: string | null;
+            /** Genres */
+            genres: string[];
+            /** Headerimage */
+            headerImage: string | null;
+            /** Reasons */
+            reasons: components["schemas"]["Reason"][];
+        };
+        /**
+         * RecommendationMode
+         * @enum {string}
+         */
+        RecommendationMode: "GENRE_AWARE" | "PLAYTIME_BASED";
+        /** RecommendationsResponse */
+        RecommendationsResponse: {
+            /** Recommendations */
+            recommendations: components["schemas"]["Recommendation"][];
+            /** Candidatecount */
+            candidateCount: number;
+            /** Excludedcount */
+            excludedCount: number;
+            /** Preferunplayed */
+            preferUnplayed: boolean;
+            recommendationMode: components["schemas"]["RecommendationMode"];
+            metadataCoverage: components["schemas"]["MetadataCoverage"];
+            /** Metadatasnapshotat */
+            metadataSnapshotAt: string | null;
+            /**
+             * Calculatedat
+             * Format: date-time
+             */
+            calculatedAt: string;
+        };
+        /** ValidationError */
+        ValidationError: {
+            /** Location */
+            loc: (string | number)[];
+            /** Message */
+            msg: string;
+            /** Error Type */
+            type: string;
+            /** Input */
+            input?: unknown;
+            /** Context */
+            ctx?: Record<string, never>;
         };
     };
     responses: never;
@@ -426,6 +527,38 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["LibraryResponse"];
+                };
+            };
+        };
+    };
+    my_recommendations_me_recommendations_get: {
+        parameters: {
+            query?: {
+                preferUnplayed?: boolean;
+                exclude?: number[];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RecommendationsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
