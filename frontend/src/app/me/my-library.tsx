@@ -1,14 +1,19 @@
 "use client";
 
+import { useState } from "react";
 import { Bar, BarChart, XAxis, YAxis } from "recharts";
 
+import GameImage from "@/components/game-image";
+import PageTabs from "@/components/page-tabs";
 import { type ChartConfig, ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart";
 import { STEAM_LOGIN_URL, useMe } from "@/features/auth/queries";
 import { type Library, useMyLibrary } from "@/features/library/queries";
 import { ApiError } from "@/lib/api/client";
 import { useHydrated } from "@/lib/use-hydrated";
 
-import MyRecommendations from "./my-recommendations";
+import MyDeals from "./my-deals";
+import OwnedRecommendations from "./my-recommendations";
+import StoreRecommendationsPanel from "./my-store-recommendations";
 
 const PRIVACY_SETTINGS_URL = "https://steamcommunity.com/my/edit/settings";
 const GENRES_SHOWN = 10;
@@ -76,8 +81,13 @@ function LibraryError({ error, onRetry }: { error: Error; onRetry: () => void })
   );
 }
 
+type MeTab = "RECS" | "STORE" | "DEALS" | "GENRES" | "GAMES";
+
 function LibraryView({ library }: { library: Library }) {
   const { summary } = library;
+  const [tab, setTab] = useState<MeTab>("RECS");
+  // 가격·후보를 조회하는 탭은 처음 열 때 불러온다. 연 뒤에는 유지하고 보이기만 바꾼다(스크롤·상태 보존).
+  const [opened, setOpened] = useState<Set<MeTab>>(() => new Set<MeTab>(["RECS"]));
   const stats = [
     ["보유 게임", `${library.gameCount}개`],
     ["총 플레이", hours(summary.totalPlaytimeMinutes)],
@@ -85,6 +95,20 @@ function LibraryView({ library }: { library: Library }) {
     ["미플레이", `${summary.unplayedCount}개`],
     ["최근 2주 플레이", `${summary.recentlyPlayedCount}개`],
   ];
+  const tabs: { id: MeTab; label: string }[] = [
+    { id: "RECS", label: "보유 게임 추천" },
+    { id: "STORE", label: "구매 추천" },
+    { id: "DEALS", label: "할인" },
+    { id: "GENRES", label: "장르 취향" },
+    { id: "GAMES", label: `보유 게임 목록 ${library.gameCount}` },
+  ];
+  const select = (t: MeTab) => {
+    setTab(t);
+    setOpened((prev) => (prev.has(t) ? prev : new Set(prev).add(t)));
+  };
+  const panel = (t: MeTab, node: React.ReactNode) => (
+    <div className={tab === t ? "" : "hidden"}>{opened.has(t) ? node : null}</div>
+  );
 
   return (
     <div className="mt-6 space-y-6">
@@ -97,32 +121,17 @@ function LibraryView({ library }: { library: Library }) {
         ))}
       </dl>
 
-      {library.gameCount > 0 ? <MyRecommendations /> : null}
-      <GenreDistribution library={library} />
-
       {library.gameCount === 0 ? (
         <p className="text-zinc-500">보유한 게임이 없습니다.</p>
       ) : (
-        <ul className="divide-y divide-zinc-200 rounded-md border border-zinc-200 dark:divide-zinc-800 dark:border-zinc-800">
-          {library.games.map((game) => (
-            <li key={game.appid} className="flex items-center gap-3 px-3 py-2">
-              {game.iconUrl ? (
-                // Steam CDN 아이콘(32px). next/image 원격 도메인 설정 없이 그대로 표시한다.
-                // eslint-disable-next-line @next/next/no-img-element
-                <img src={game.iconUrl} alt="" width={32} height={32} className="rounded" />
-              ) : (
-                <span className="h-8 w-8 rounded bg-zinc-200 dark:bg-zinc-800" />
-              )}
-              <span className="flex-1 truncate">{game.name}</span>
-              {game.playtime2Weeks > 0 && (
-                <span className="text-xs text-emerald-600">최근 {hours(game.playtime2Weeks)}</span>
-              )}
-              <span className="w-20 text-right text-sm tabular-nums text-zinc-600 dark:text-zinc-400">
-                {game.playtimeForever > 0 ? hours(game.playtimeForever) : "미플레이"}
-              </span>
-            </li>
-          ))}
-        </ul>
+        <div className="space-y-4">
+          <PageTabs label="내 라이브러리 섹션" tabs={tabs} current={tab} onSelect={select} />
+          {panel("RECS", <OwnedRecommendations />)}
+          {panel("STORE", <StoreRecommendationsPanel />)}
+          {panel("DEALS", <MyDeals />)}
+          {panel("GENRES", <GenreDistribution library={library} visible={tab === "GENRES"} />)}
+          {panel("GAMES", <GameList library={library} />)}
+        </div>
       )}
       <p className="text-xs text-zinc-500">
         조회 시각 {new Date(library.fetchedAt).toLocaleString("ko-KR")} · 라이브러리는 저장하지 않으며 요청할 때마다
@@ -132,9 +141,33 @@ function LibraryView({ library }: { library: Library }) {
   );
 }
 
+function GameList({ library }: { library: Library }) {
+  return (
+    <section className="rounded-lg border border-zinc-200 dark:border-zinc-800">
+      <header className="border-b border-zinc-200 px-4 py-3 dark:border-zinc-800">
+        <h2 className="font-semibold">보유 게임 목록</h2>
+      </header>
+      <ul className="divide-y divide-zinc-200 dark:divide-zinc-800">
+        {library.games.map((game) => (
+          <li key={game.appid} className="flex items-center gap-3 px-4 py-2">
+            <GameImage src={game.headerImage} fallbackSrc={game.iconUrl} className="aspect-[460/215] w-20 rounded" />
+            <span className="flex-1 truncate">{game.name}</span>
+            {game.playtime2Weeks > 0 && (
+              <span className="text-xs text-emerald-600">최근 {hours(game.playtime2Weeks)}</span>
+            )}
+            <span className="w-20 text-right text-sm tabular-nums text-zinc-600 dark:text-zinc-400">
+              {game.playtimeForever > 0 ? hours(game.playtimeForever) : "미플레이"}
+            </span>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
 const genreConfig = { percent: { label: "취향 비중(%)", color: "var(--chart-1)" } } satisfies ChartConfig;
 
-function GenreDistribution({ library }: { library: Library }) {
+function GenreDistribution({ library, visible }: { library: Library; visible: boolean }) {
   const { metadataCoverage: c } = library;
   const eligible = c.total - c.notAvailable;
   const genres = library.genreDistribution
@@ -157,7 +190,8 @@ function GenreDistribution({ library }: { library: Library }) {
           <p className="text-sm text-zinc-500">
             {c.pending > 0 ? "장르 정보를 모으는 중입니다…" : "플레이 기록이 있는 게임의 장르 정보가 없습니다."}
           </p>
-        ) : (
+        ) : !visible ? null : (
+          // 숨긴 탭 안에서 그리면 차트 크기가 0이 되어 경고가 난다 → 보일 때만 그린다.
           <>
             <ChartContainer config={genreConfig} className="aspect-auto w-full" style={{ height: genres.length * 28 + 16 }}>
               <BarChart data={genres} layout="vertical" margin={{ left: 8, right: 24 }} barCategoryGap={6}>

@@ -1,0 +1,132 @@
+"use client";
+
+import GameImage from "@/components/game-image";
+import ToggleChip from "@/components/toggle-chip";
+import { FACTOR_LABEL, MODE_LABEL } from "@/features/library/labels";
+import { type StoreRecommendation, useStoreRecommendations } from "@/features/library/queries";
+import { ApiError } from "@/lib/api/client";
+import { formatDateTime, formatPrice } from "@/lib/format";
+import { useAppStore } from "@/stores/app-store";
+
+/** 구매 추천(F4ⓒ): 대시보드 인기·할인·신작 목록 중 보유하지 않은 게임을 취향·인기로 추천. 정가 포함. */
+export default function StoreRecommendationsPanel() {
+  const onSaleOnly = useAppStore((s) => s.recOptions.onSaleOnly);
+  const setRecOptions = useAppStore((s) => s.setRecOptions);
+  const query = useStoreRecommendations(true, onSaleOnly);
+  const data = query.data;
+
+  return (
+    <section className="rounded-lg border border-zinc-200 dark:border-zinc-800">
+      <header className="flex flex-wrap items-center justify-between gap-2 border-b border-zinc-200 px-4 py-3 dark:border-zinc-800">
+        <div className="flex items-baseline gap-2">
+          <h2 className="font-semibold">내 취향에 맞는 인기 게임</h2>
+          {data ? <span className="text-xs text-zinc-500">{MODE_LABEL[data.recommendationMode]}</span> : null}
+        </div>
+        <ToggleChip
+          label="할인 중"
+          pressed={onSaleOnly}
+          onChange={(v) => setRecOptions({ onSaleOnly: v })}
+          title="켜면 지금 할인 중인 게임만 보여 줍니다"
+        />
+      </header>
+
+      <div className="px-4 py-3">
+        {query.isPending ? (
+          <p className="text-sm text-zinc-500">추천을 계산하는 중…</p>
+        ) : query.isError ? (
+          <StoreError error={query.error} onRetry={() => query.refetch()} />
+        ) : data!.recommendations.length === 0 ? (
+          <p className="text-sm text-zinc-500">
+            {onSaleOnly ? "지금 할인 중인 후보 게임이 없습니다. '할인 중'을 끄면 정가 게임도 보여 줍니다." : "추천할 게임이 없습니다."}
+          </p>
+        ) : (
+          <ol className={`divide-y divide-zinc-200 dark:divide-zinc-800 ${query.isPlaceholderData ? "opacity-60" : ""}`}>
+            {data!.recommendations.map((rec, i) => (
+              <StoreRow key={rec.appid} rank={i + 1} rec={rec} />
+            ))}
+          </ol>
+        )}
+
+        {data ? (
+          <p className="mt-3 text-xs text-zinc-500">
+            Steam 판매·접속 순위, 할인·신작 목록에 오른 게임 중 보유하지 않은 {data.candidatePoolSize}개가 후보입니다
+            (Steam 전체 목록을 주는 공식 API가 없음).
+            {data.metadataPending > 0 || data.pricePending > 0
+              ? ` 장르 ${data.metadataPending}개 · 가격 ${data.pricePending}개 수집 중, 자동 갱신.`
+              : ""}
+            {data.priceSnapshotAt ? ` 가격 기준 ${formatDateTime(data.priceSnapshotAt)}(한국 상점).` : ""}
+            {data.wishlistChecked ? "" : " 위시리스트를 확인하지 못했습니다."}
+          </p>
+        ) : null}
+      </div>
+    </section>
+  );
+}
+
+function StoreError({ error, onRetry }: { error: Error; onRetry: () => void }) {
+  if (error instanceof ApiError && error.code === "DATA_NOT_READY") {
+    return <p className="text-sm text-zinc-500">Steam 인기·할인 목록을 아직 모으지 못했습니다. 잠시 후 다시 확인해 주세요.</p>;
+  }
+  return (
+    <div role="alert" className="flex items-center gap-3 text-sm text-red-700 dark:text-red-300">
+      <span>{error.message}</span>
+      <button type="button" onClick={onRetry} className="rounded-md border border-red-400 px-2 py-1">
+        다시 시도
+      </button>
+    </div>
+  );
+}
+
+function StoreRow({ rank, rec }: { rank: number; rec: StoreRecommendation }) {
+  const price = rec.price;
+  return (
+    <li className="flex gap-3 py-3">
+      <span className="w-5 shrink-0 pt-1 text-right text-sm tabular-nums text-zinc-500">{rank}</span>
+      <a href={rec.storeUrl} target="_blank" rel="noopener noreferrer" className="shrink-0">
+        <GameImage src={rec.headerImage} className="aspect-[460/215] w-36 rounded" />
+      </a>
+      <div className="min-w-0 flex-1 space-y-1">
+        <div className="flex items-baseline justify-between gap-2">
+          <a href={rec.storeUrl} target="_blank" rel="noopener noreferrer" className="truncate font-medium hover:underline">
+            {rec.name}
+          </a>
+          <span className="shrink-0 text-xs tabular-nums text-zinc-500">{Math.round(rec.score * 100)}점</span>
+        </div>
+        <p className="truncate text-xs text-zinc-500">
+          {rec.genres.join(" · ")}
+          {rec.wishlisted ? <span className="ml-2 text-sky-600">위시리스트</span> : null}
+        </p>
+        <ul className="flex flex-wrap gap-x-4 gap-y-0.5 text-sm">
+          {rec.reasons.map((r) =>
+            r.factor === "LOW_GENRE_COVERAGE" ? (
+              <li key={r.factor} className="text-xs text-amber-700 dark:text-amber-400">
+                {r.detail}
+              </li>
+            ) : (
+              <li key={r.factor}>
+                {FACTOR_LABEL[r.factor]}
+                {r.detail ? <span className="text-zinc-500"> · {r.detail}</span> : null}
+                <span className="ml-1 tabular-nums text-zinc-500">+{Math.round(r.contribution * 100)}</span>
+              </li>
+            ),
+          )}
+        </ul>
+      </div>
+      <div className="w-24 shrink-0 text-right text-sm">
+        {price ? (
+          <>
+            {price.discountPercent > 0 ? (
+              <>
+                <span className="rounded bg-emerald-600 px-1 text-xs font-medium text-white">-{price.discountPercent}%</span>
+                <p className="text-xs text-zinc-400 line-through">{formatPrice(price.initialPrice, price.currency)}</p>
+              </>
+            ) : null}
+            <p className="tabular-nums">{formatPrice(price.finalPrice, price.currency)}</p>
+          </>
+        ) : (
+          <p className="text-xs text-zinc-500">가격 정보 없음</p>
+        )}
+      </div>
+    </li>
+  );
+}

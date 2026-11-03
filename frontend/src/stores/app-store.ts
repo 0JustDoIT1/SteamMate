@@ -5,7 +5,8 @@ import { createJSONStorage, persist } from "zustand/middleware";
 
 // 전역 클라이언트 상태만 둔다. 로그인 상태(steamId)를 포함한 서버 데이터는 TanStack Query 캐시에 둔다.
 export type RecommendationOptions = {
-  preferUnplayed: boolean;
+  // 살 만한 게임: 할인 중인 게임만 보기
+  onSaleOnly: boolean;
 };
 
 type AppState = {
@@ -24,7 +25,7 @@ export const useAppStore = create<AppState>()(
   persist(
     (set) => ({
       cc: "kr",
-      recOptions: { preferUnplayed: true },
+      recOptions: { onSaleOnly: false },
       excludedAppids: [],
       selectedAppid: null,
       setCc: (cc) => set({ cc }),

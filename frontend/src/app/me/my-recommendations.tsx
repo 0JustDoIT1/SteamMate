@@ -1,35 +1,22 @@
 "use client";
 
 import GameImage from "@/components/game-image";
-import { type Recommendation, type ReasonFactor, useMyRecommendations } from "@/features/library/queries";
+import { FACTOR_LABEL, MODE_LABEL } from "@/features/library/labels";
+import { type Recommendation, useMyRecommendations } from "@/features/library/queries";
 import { formatDateTime, steamStoreUrl } from "@/lib/format";
 import { useHydrated } from "@/lib/use-hydrated";
 import { useAppStore } from "@/stores/app-store";
 
-const FACTOR_LABEL: Record<ReasonFactor, string> = {
-  GENRE_MATCH: "취향 장르",
-  UNPLAYED: "덜 해본 게임",
-  RECENT_GENRE: "최근 즐긴 장르",
-  RECENTLY_PLAYED: "최근 실행",
-  LOW_GENRE_COVERAGE: "참고",
-};
-
-const MODE_LABEL = {
-  GENRE_AWARE: "장르 취향 반영",
-  PLAYTIME_BASED: "플레이 기록 기준",
-} as const;
-
-export default function MyRecommendations() {
+/** 보유 게임 추천(F3): 2시간 미만 플레이한 보유 게임 중 취향·덜 해본 정도로 TOP 3. */
+export default function OwnedRecommendations() {
   // 제외 목록은 브라우저 저장소에서 복원되므로 hydration 뒤에 요청해야 첫 요청부터 반영된다.
   const hydrated = useHydrated();
-  const preferUnplayed = useAppStore((s) => s.recOptions.preferUnplayed);
-  const setRecOptions = useAppStore((s) => s.setRecOptions);
   const excluded = useAppStore((s) => s.excludedAppids);
   const toggleExcluded = useAppStore((s) => s.toggleExcluded);
   const clearExcluded = useAppStore((s) => s.clearExcluded);
-  const query = useMyRecommendations(hydrated, preferUnplayed, excluded);
+  const query = useMyRecommendations(hydrated, excluded);
   const data = query.data;
-  // 장르 수집 중에는 조금 해 본 게임만 추천하므로(미플레이 제외) 미플레이 우선 옵션이 의미 없다.
+  // 장르 수집 중에는 순서 근거가 없는 미플레이 게임을 빼고 조금 해 본 게임만 추천한다("이어서 하기").
   const collecting = data?.recommendationMode === "PLAYTIME_BASED";
 
   return (
@@ -39,18 +26,6 @@ export default function MyRecommendations() {
           <h2 className="font-semibold">{collecting ? "이어서 하기" : "다음에 할 게임"}</h2>
           {data ? <span className="text-xs text-zinc-500">{MODE_LABEL[data.recommendationMode]}</span> : null}
         </div>
-        <label
-          className={`flex items-center gap-2 text-sm ${collecting ? "text-zinc-400" : ""}`}
-          title={collecting ? "장르 정보를 모은 뒤 미플레이 게임까지 추천합니다" : undefined}
-        >
-          <input
-            type="checkbox"
-            checked={preferUnplayed}
-            disabled={collecting}
-            onChange={(e) => setRecOptions({ preferUnplayed: e.target.checked })}
-          />
-          미플레이 우선
-        </label>
       </header>
 
       <div className="px-4 py-3">
