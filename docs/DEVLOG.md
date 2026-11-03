@@ -14,8 +14,8 @@
 | 2 | Steam 로그인 + `/me/library` 기본 조회 | ✅ 완료 (실계정 로그인·로그아웃 확인) |
 | 3a | 메타데이터 캐시(game_metadata, 레이트리미터) | ✅ 완료 |
 | 3b | 소스 스파이크 → 인기 대시보드 | ✅ 완료 (브라우저 확인, 커밋) |
-| 4 | 라이브러리 분석 + 보유 게임 추천·이유 | ⏭ 다음 |
-| 5 | 가격·할인(위시리스트·DLC·미보유 추천) | 대기 |
+| 4 | 라이브러리 분석 + 보유 게임 추천·이유 | ✅ 완료 (화면 확인) |
+| 5 | 가격·할인(위시리스트·DLC·미보유 추천) | ⏭ 다음 |
 | 6 | 뉴스 조회·정제 (R1 완료) | 대기 |
 | 7 | Full Context vs RAG 실험 | 대기 (LLM 제공자 결정 필요) |
 | 8 | 뉴스 AI 질문 (R2 완료) | 대기 |
@@ -365,6 +365,33 @@
 **탭 전환 시 좌우 흔들림 수정**: ① 탭마다 페이지 높이가 달라 세로 스크롤바가 생겼다 사라지며 폭 변화 → 처음엔 `scrollbar-gutter: stable`로 고쳤으나 짧은 페이지에도 빈 스크롤바 자리가 남아(사용자 지적) `body { width: 100vw }` + `html { overflow-x: hidden }`로 변경(스크롤바가 내용 오른쪽 끝 위에 겹침) ② 선택 탭만 `font-medium`이라 탭 폭 변화 → 모든 탭 같은 굵기, 선택은 색·밑줄로만. FE lint·typecheck 통과 [확인] / 화면은 사용자 확인 대기
 
 **탭·섹션 이름 개조식 통일**: 판매 순위 / 실시간 접속 순위(현재 동시 접속) / 주간 접속 순위(주간 최고 동시 접속, 기존 "많이 플레이한 게임") / 할인 게임 / 신작 게임 / 장르 순위. 섹션 제목·장르 기준 문구도 같은 이름으로. FE lint·typecheck 통과 [확인]
+
+### 4단계 — 라이브러리 분석 + 보유 게임 추천 (2026-11-03)
+
+**결정 (사용자 선택, PRD v6.2로 점수 설계 F3 확정)**
+| 항목 | 결정 |
+|---|---|
+| 후보 | 플레이 120분 미만, 게임으로 확인됐거나 종류 미확인(DLC·데모 등 제외), 클라이언트 제외 목록 제외 |
+| GENRE_AWARE | `0.6·genreMatch + 0.3·unplayed + 0.1·recentGenre` (미플레이 우선: 0.45 / 0.5 / 0.05) |
+| PLAYTIME_BASED (장르 수집 중 임시 추천 "이어서 하기") | 후보에서 **미플레이(0분) 제외**(사용자 결정: 미플레이끼리 순서 근거 없음), `0.7·unplayed + 0.3·recentlyPlayed(90일 안 실행)`, 미플레이 우선 옵션 미적용(화면 토글 비활성), 이유에 `LOW_GENRE_COVERAGE`(기여 0) |
+| 요소 값 | unplayed = 1 − 분/120, genreMatch·recentGenre = 취향 가중치 합(전체 / 최근 2주 플레이) |
+| 장르 분포 | 취향 가중치(장르별 Σ log1p(분), 합 1) — 추천 genreMatch와 같은 값 |
+| 모드 임계값 | coverage.ratio ≥ 0.9 → GENRE_AWARE (설정 `recommendation_genre_threshold`) |
+- "최근 구매" 요소는 불가로 판단: Steam이 구매일을 주지 않고, 미플레이 게임은 `rtime_last_played = 0`이라 구분 안 됨 → "최근 실행"으로 대체
+- 후보 0개는 오류(INSUFFICIENT_DATA) 대신 200 + 빈 목록 + `candidateCount: 0`(화면에서 후보 조건 안내)
+- 화면 구성(사용자 결정): 보유 게임 추천(F3)과 미보유 추천(F4ⓒ)을 "내 취향 추천" 한 영역의 "가진 게임 중 / 살 만한 게임" 탭으로 합침. API·점수는 분리. 탭 구조는 5단계에서 두 번째 탭과 함께 적용(탭 하나짜리 UI는 만들지 않음). → PRD v6.2 반영
+- 미보유 추천을 정가 게임까지 확대(할인 중만 보기 필터) → PRD v6.2 반영, 가중치·응답 형식·가격 수집 비용은 5단계 착수 시 확정
+
+**변경**
+- `app/recommend.py`: 순수 함수 `recommend()`(점수·이유·정렬, `now`·장르 표시 함수 주입), `choose_mode()`, `fetch_recommendations()`. `contribution` 합 = `score`, 동점 appid 오름차순
+- `GET /me/recommendations?preferUnplayed=&exclude=`(반복 파라미터, 양수·최대 1000개 검증) → `recommendations`, `candidateCount`, `excludedCount`, `recommendationMode`, `metadataCoverage`, `metadataSnapshotAt`, `calculatedAt`
+- `app/library.py`: `load_owned_games()`(비공개 판별 공용화), 응답에 `genreDistribution`
+- 프론트: `/me`에 추천 카드 3개(이미지·점수·요소별 기여·추천에서 빼기), 미플레이 우선 토글, 제외 목록(Zustand persist, 모두 되돌리기), 장르 취향 가로 막대, coverage 문구. 라이브러리·추천 모두 `pending > 0`이면 5초 폴링(최대 60회)
+
+**겪은 문제**
+- uvicorn `--reload`가 파일 변경 감지 후 재시작하지 못하고 멈춤(이전 프로세스가 계속 응답) → 서버 재기동으로 해결. 원인 미확인(Windows에서 열린 연결 종료 대기 추정)
+
+**검증**: pytest 181 passed(추천 순수 함수 10개: 점수·이유 정확값, 미플레이 우선, 최근 장르, 동점, 제외·미확인 메타데이터, PLAYTIME_BASED, 입력 순서 무관 재현성, 후보 없음, 임계값 경계 / API 7개: 로그인, 정상 응답, 제외·저수집률, 잘못된 입력 422, 제외 목록 상한, 비공개, Steam 429), ruff·FE lint·typecheck·build 통과 [확인] / 실계정 화면 사용자 확인 [확인]
 
 ---
 
