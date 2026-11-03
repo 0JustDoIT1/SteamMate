@@ -57,6 +57,8 @@ class Settings(BaseSettings):
     price_retry_not_found_seconds: int = 3600
     # 사용자 요청 한 번에 받는 가격 묶음(100개) 수. 나머지는 화면 폴링이 이어 받는다.
     price_max_batches_per_request: int = 3
+    # 뉴스 발췌 메모리 캐시(본문 전문은 캐시하지 않음)
+    news_cache_seconds: int = 600
 
     @property
     def cookie_secure(self) -> bool:

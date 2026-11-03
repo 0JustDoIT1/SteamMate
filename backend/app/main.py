@@ -21,9 +21,10 @@ from app.logging_config import configure_logging
 from app.metadata.service import MetadataLookup, MetadataService
 from app.metadata.state import MetadataPolicy
 from app.models import ChartSource
+from app.news import NewsService
 from app.owned_cache import OwnedGamesCache
 from app.prices import PriceLookup, PricePolicy, PriceService
-from app.routers import auth, dashboard, me
+from app.routers import auth, dashboard, me, news
 from app.steam.charts_api import ChartsApi
 from app.steam.store_api import StoreApi
 
@@ -137,6 +138,7 @@ def create_app(
     store_limiter = build_store_limiter(settings)
     app.state.metadata = metadata or build_metadata_service(settings, app.state.http, store_limiter)
     app.state.prices = prices or build_price_service(settings, app.state.http, store_limiter)
+    app.state.news = NewsService(app.state.http, app.state.metadata, settings.news_cache_seconds)
     app.state.dashboard = dashboard_service or DashboardService(
         get_sessionmaker, app.state.metadata, cc=settings.store_cc
     )
@@ -151,6 +153,7 @@ def create_app(
     app.include_router(auth.router)
     app.include_router(me.router)
     app.include_router(dashboard.router)
+    app.include_router(news.router)
 
     @app.get("/health")
     async def health():
