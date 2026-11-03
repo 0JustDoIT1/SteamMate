@@ -89,6 +89,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/steam/dashboard": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Dashboard
+         * @description 공개 데이터라 로그인 없이 열람 가능. 로그인 상태면 세션 steamId로 보유·취향을 표시한다.
+         */
+        get: operations["dashboard_steam_dashboard_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/health": {
         parameters: {
             query?: never;
@@ -128,10 +148,97 @@ export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
         /**
+         * ChartSource
+         * @enum {string}
+         */
+        ChartSource: "TOP_SELLERS" | "MOST_PLAYED" | "CONCURRENT" | "SPECIALS" | "NEW_RELEASES";
+        /** DashboardEntry */
+        DashboardEntry: {
+            /** Rank */
+            rank: number;
+            /** Appid */
+            appid: number;
+            /** Name */
+            name: string;
+            /** Imageurl */
+            imageUrl: string | null;
+            /** Rankdelta */
+            rankDelta: number | null;
+            /** Isnew */
+            isNew: boolean;
+            /** Metricvalue */
+            metricValue: number | null;
+            /** Finalprice */
+            finalPrice: number | null;
+            /** Originalprice */
+            originalPrice: number | null;
+            /** Discountpercent */
+            discountPercent: number | null;
+            /** Currency */
+            currency: string | null;
+            /** Genres */
+            genres: string[];
+            /** Score */
+            score: number | null;
+            /** Weekscharted */
+            weeksCharted: number | null;
+            /** Bestrank */
+            bestRank: number | null;
+            /** Trend */
+            trend: (number | null)[] | null;
+            /** Daypeak */
+            dayPeak: number | null;
+            /** Owned */
+            owned: boolean | null;
+            /** Affinity */
+            affinity: number | null;
+        };
+        /** DashboardResponse */
+        DashboardResponse: {
+            /** Sections */
+            sections: components["schemas"]["DashboardSection"][];
+            genreDistribution: components["schemas"]["GenreDistribution"];
+            /** Personalized */
+            personalized: boolean;
+        };
+        /** DashboardSection */
+        DashboardSection: {
+            source: components["schemas"]["ChartSource"];
+            /**
+             * Snapshotat
+             * Format: date-time
+             */
+            snapshotAt: string;
+            /** Periodstart */
+            periodStart: string | null;
+            /** Entries */
+            entries: components["schemas"]["DashboardEntry"][];
+            /** Periods */
+            periods: components["schemas"]["PeriodRanking"][];
+            /** Trendtimes */
+            trendTimes: string[];
+        };
+        /**
          * FetchStatus
          * @enum {string}
          */
         FetchStatus: "PENDING" | "SUCCESS" | "TEMPORARY_ERROR" | "NOT_AVAILABLE";
+        /** GenreCount */
+        GenreCount: {
+            /** Genre */
+            genre: string;
+            /** Count */
+            count: number;
+        };
+        /** GenreDistribution */
+        GenreDistribution: {
+            /** Genres */
+            genres: components["schemas"]["GenreCount"][];
+            /** Basedon */
+            basedOn: number;
+            /** Withgenres */
+            withGenres: number;
+        };
         /** LibraryGame */
         LibraryGame: {
             /** Appid */
@@ -200,6 +307,21 @@ export interface components {
             total: number;
             /** Ratio */
             ratio: number;
+        };
+        /**
+         * Period
+         * @enum {string}
+         */
+        Period: "MONTH" | "YEAR";
+        /** PeriodRanking */
+        PeriodRanking: {
+            period: components["schemas"]["Period"];
+            /** Weeksincluded */
+            weeksIncluded: number;
+            /** Weeksrequired */
+            weeksRequired: number;
+            /** Entries */
+            entries: components["schemas"]["DashboardEntry"][];
         };
     };
     responses: never;
@@ -304,6 +426,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["LibraryResponse"];
+                };
+            };
+        };
+    };
+    dashboard_steam_dashboard_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DashboardResponse"];
                 };
             };
         };
