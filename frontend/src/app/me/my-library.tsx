@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useState } from "react";
 import { Bar, BarChart, XAxis, YAxis } from "recharts";
 
@@ -158,6 +159,12 @@ function GameList({ library }: { library: Library }) {
             <span className="w-20 text-right text-sm tabular-nums text-zinc-600 dark:text-zinc-400">
               {game.playtimeForever > 0 ? hours(game.playtimeForever) : "미플레이"}
             </span>
+            <Link
+              href={`/news/${game.appid}`}
+              className="shrink-0 rounded-md border border-zinc-300 px-2 py-0.5 text-xs text-zinc-600 hover:border-zinc-500 dark:border-zinc-700 dark:text-zinc-400"
+            >
+              뉴스
+            </Link>
           </li>
         ))}
       </ul>
