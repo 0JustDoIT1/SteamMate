@@ -26,6 +26,8 @@ class LibraryGame(CamelModel):
     playtime_2weeks: int
     last_played_at: datetime | None
     icon_url: str | None
+    # 상점 대표 이미지(메타데이터). 일부 게임은 아이콘 주소가 404라 화면은 이것을 먼저 쓴다.
+    header_image: str | None
     metadata_status: FetchStatus
     app_type: str | None
     genres: list[str]
@@ -110,6 +112,7 @@ def _to_library_game(game: OwnedGame, meta: MetadataSnapshot | None) -> LibraryG
         playtime_2weeks=game.playtime_2weeks or 0,
         last_played_at=datetime.fromtimestamp(game.rtime_last_played, UTC) if game.rtime_last_played else None,
         icon_url=ICON_URL.format(appid=game.appid, hash=game.img_icon_url) if game.img_icon_url else None,
+        header_image=meta.header_image if meta else None,
         metadata_status=meta.status if meta else FetchStatus.PENDING,
         app_type=meta.app_type if meta else None,
         genres=korean_genres(meta.genres) if meta and meta.status is FetchStatus.SUCCESS else [],

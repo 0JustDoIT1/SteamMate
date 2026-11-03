@@ -10,6 +10,7 @@ from app.dashboard import DashboardService
 from app.errors import AppError, ErrorCode
 from app.metadata.service import MetadataLookup
 from app.owned_cache import OwnedGamesCache
+from app.prices import PriceLookup
 from app.steam.web_api import SteamWebApi
 
 
@@ -31,6 +32,10 @@ def get_metadata(request: Request) -> MetadataLookup:
 
 def get_owned_cache(request: Request) -> OwnedGamesCache:
     return request.app.state.owned
+
+
+def get_prices(request: Request) -> PriceLookup:
+    return request.app.state.prices
 
 
 def get_dashboard(request: Request) -> DashboardService:

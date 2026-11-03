@@ -34,20 +34,15 @@ class ReasonFactor(StrEnum):
     UNPLAYED = "UNPLAYED"  # 덜 해본 정도(0분 = 1, 2시간 = 0)
     RECENT_GENRE = "RECENT_GENRE"  # 최근 2주 플레이 장르와 겹침
     RECENTLY_PLAYED = "RECENTLY_PLAYED"  # 최근 90일 안에 실행(이어서 하기)
+    POPULAR = "POPULAR"  # 미보유 추천: 대시보드 목록 최고 순위의 역수
     LOW_GENRE_COVERAGE = "LOW_GENRE_COVERAGE"  # 장르 정보 부족 안내(기여 0)
 
 
-# (모드, 미플레이 우선) → 요소별 가중치. 미플레이 우선은 UNPLAYED 가중치를 0.2 올린다.
-WEIGHTS: dict[tuple[RecommendationMode, bool], dict[ReasonFactor, float]] = {
-    (RecommendationMode.GENRE_AWARE, False): {
+WEIGHTS: dict[RecommendationMode, dict[ReasonFactor, float]] = {
+    RecommendationMode.GENRE_AWARE: {
         ReasonFactor.GENRE_MATCH: 0.6, ReasonFactor.UNPLAYED: 0.3, ReasonFactor.RECENT_GENRE: 0.1,
     },
-    (RecommendationMode.GENRE_AWARE, True): {
-        ReasonFactor.GENRE_MATCH: 0.45, ReasonFactor.UNPLAYED: 0.5, ReasonFactor.RECENT_GENRE: 0.05,
-    },
-    # 장르 수집 중에는 미플레이 게임이 후보가 아니므로 미플레이 우선 옵션이 적용되지 않는다.
-    (RecommendationMode.PLAYTIME_BASED, False): {ReasonFactor.UNPLAYED: 0.7, ReasonFactor.RECENTLY_PLAYED: 0.3},
-    (RecommendationMode.PLAYTIME_BASED, True): {ReasonFactor.UNPLAYED: 0.7, ReasonFactor.RECENTLY_PLAYED: 0.3},
+    RecommendationMode.PLAYTIME_BASED: {ReasonFactor.UNPLAYED: 0.7, ReasonFactor.RECENTLY_PLAYED: 0.3},
 }
 
 
@@ -72,7 +67,6 @@ class RecommendationsResponse(CamelModel):
     recommendations: list[Recommendation]
     candidate_count: int
     excluded_count: int
-    prefer_unplayed: bool
     recommendation_mode: RecommendationMode
     metadata_coverage: MetadataCoverage
     metadata_snapshot_at: datetime | None
@@ -84,11 +78,14 @@ def choose_mode(coverage: MetadataCoverage, threshold: float) -> RecommendationM
 
 
 def is_candidate(
-    game: OwnedGame, meta: MetadataSnapshot | None, exclude: frozenset[int], mode: RecommendationMode
+    game: OwnedGame,
+    meta: MetadataSnapshot | None,
+    exclude: frozenset[int],
+    mode: RecommendationMode,
 ) -> bool:
     if game.playtime_forever >= CANDIDATE_MAX_MINUTES or game.appid in exclude:
         return False
-    if mode is RecommendationMode.PLAYTIME_BASED and game.playtime_forever == 0:
+    if game.playtime_forever == 0 and mode is RecommendationMode.PLAYTIME_BASED:
         return False
     # 종류를 모르면(메타데이터 수집 전) 후보로 두고, DLC·데모 등 게임이 아닌 것으로 확인되면 뺀다.
     return meta is None or meta.app_type is None or meta.app_type == "game"
@@ -99,7 +96,6 @@ def recommend(
     snapshots: Mapping[int, MetadataSnapshot],
     *,
     mode: RecommendationMode,
-    prefer_unplayed: bool,
     exclude: frozenset[int],
     coverage_ratio: float,
     now: datetime,
@@ -110,7 +106,7 @@ def recommend(
     genres_by_appid = {a: s.genres for a, s in snapshots.items() if s.status is FetchStatus.SUCCESS}
     preference = genre_preference(((g.appid, g.playtime_forever) for g in owned), genres_by_appid)
     recent = genre_preference(((g.appid, g.playtime_2weeks or 0) for g in owned), genres_by_appid)
-    weights = WEIGHTS[(mode, prefer_unplayed)]
+    weights = WEIGHTS[mode]
 
     candidates = [g for g in owned if is_candidate(g, snapshots.get(g.appid), exclude, mode)]
     scored: list[Recommendation] = []
@@ -180,7 +176,6 @@ async def fetch_recommendations(
     owned_cache: OwnedGamesCache,
     steam_id: str,
     *,
-    prefer_unplayed: bool,
     exclude: frozenset[int],
     genre_threshold: float,
 ) -> RecommendationsResponse:
@@ -193,7 +188,6 @@ async def fetch_recommendations(
         owned,
         snapshots,
         mode=mode,
-        prefer_unplayed=prefer_unplayed,
         exclude=exclude,
         coverage_ratio=coverage.ratio,
         now=now,
@@ -202,7 +196,6 @@ async def fetch_recommendations(
         recommendations=recommendations,
         candidate_count=candidate_count,
         excluded_count=sum(1 for g in owned if g.appid in exclude),
-        prefer_unplayed=prefer_unplayed,
         recommendation_mode=mode,
         metadata_coverage=coverage,
         metadata_snapshot_at=snapshot_at(snapshots.values()),

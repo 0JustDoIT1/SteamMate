@@ -52,6 +52,22 @@ class PlayerSummariesResponse(_Loose):
     response: PlayerSummariesBody
 
 
+class WishlistItem(_Loose):
+    appid: int
+    priority: int = 0
+    date_added: int = 0
+
+
+class WishlistBody(_Loose):
+    # 비공개 위시리스트는 HTTP 200 + 빈 객체({})로 온다(2026-11-03 확인).
+    # 공개인데 비어 있어도 같은 모양일 가능성이 높다(protobuf 기본값 생략, 미확인) → 구분하지 않는다.
+    items: list[WishlistItem] | None = None
+
+
+class WishlistResponse(_Loose):
+    response: WishlistBody
+
+
 class SteamWebApi:
     def __init__(self, http: httpx.AsyncClient, api_key: str) -> None:
         self._http = http
@@ -71,9 +87,21 @@ class SteamWebApi:
         )
         return next((p for p in data.response.players if p.steamid == steam_id), None)
 
-    async def _get(self, path: str, params: dict[str, Any], model: type[T]) -> T:
+    async def get_wishlist(self, steam_id: str) -> list[WishlistItem] | None:
+        """본인 공개 위시리스트. 비어 있거나 비공개면 None.
+
+        API 키 없이 호출한다: 키를 붙이면 키 소유 계정은 비공개여도 조회될 수 있어 공개 범위를 존중하지 못한다.
+        """
+        data = await self._get(
+            "/IWishlistService/GetWishlist/v1/", {"steamid": steam_id}, WishlistResponse, with_key=False
+        )
+        return data.response.items or None
+
+    async def _get(self, path: str, params: dict[str, Any], model: type[T], with_key: bool = True) -> T:
         try:
-            res = await self._http.get(f"{BASE_URL}{path}", params={**params, "key": self._api_key})
+            res = await self._http.get(
+                f"{BASE_URL}{path}", params={**params, "key": self._api_key} if with_key else params
+            )
         except httpx.TimeoutException as exc:
             raise AppError(ErrorCode.STEAM_TIMEOUT, "Steam 응답이 지연되고 있습니다.", 504) from exc
         except httpx.HTTPError as exc:

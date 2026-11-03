@@ -13,7 +13,7 @@ from app.jobs.collector import BACKFILL_WEEKS, LOCK_KEY, Collector, CollectorPol
 from app.metadata.service import Priority
 from app.models import ChartEntry, ChartSnapshot, ChartSource, SnapshotStatus
 from app.steam.charts_api import ChartsApi
-from tests.fakes import FakeMetadata
+from tests.fakes import FakeMetadata, FakePrices
 from tests.fixtures.steam.charts import TOP_SELLERS
 from tests.test_charts_api import PATHS
 
@@ -67,6 +67,7 @@ def make_collector(
     overrides: dict | None = None,
     calls: list | None = None,
     history: bool = False,
+    prices=None,
 ):
     responses = {**PATHS, **(overrides or {})}
 
@@ -79,7 +80,9 @@ def make_collector(
         return r if isinstance(r, httpx.Response) else httpx.Response(200, json=r)
 
     charts = ChartsApi(httpx.AsyncClient(transport=httpx.MockTransport(handler)), "k", "kr", "english")
-    return Collector(lambda: db_sessionmaker, charts, metadata or FakeMetadata(), POLICY, cc="kr", now=clock)
+    return Collector(
+        lambda: db_sessionmaker, charts, metadata or FakeMetadata(), POLICY, cc="kr", now=clock, prices=prices
+    )
 
 
 async def snapshots(sm, source: ChartSource | None = None) -> list[ChartSnapshot]:
@@ -200,3 +203,12 @@ async def test_retention_uses_period_for_weekly_and_keeps_latest_success(db_sess
     await make_collector(db_sessionmaker, clock, history=True).run_once()
     oldest = min(s.period_start for s in await snapshots(db_sessionmaker, ChartSource.TOP_SELLERS))
     assert oldest >= clock.now - timedelta(weeks=53)
+
+
+async def test_prefetches_candidate_pool_prices(db_sessionmaker):
+    prices = FakePrices()
+    await make_collector(db_sessionmaker, Clock(T0), prices=prices).run_once()
+
+    # 방금 수집한 목록 전체(후보 풀)의 가격을 묶음 제한 없이 미리 받는다
+    ids, max_batches = prices.requested[0]
+    assert set(ids) == {730, 570, 999001, 440, 578080, 620, 1091500, 999002} and max_batches is None

@@ -55,6 +55,28 @@ class GameMetadata(Base):
     failure_reason: Mapped[str | None] = mapped_column(String(64))
 
 
+class GamePrice(Base):
+    """(게임, 상점 국가) = 1행. 상점 가격의 단기 캐시(TTL 1시간, 임시). 사용자 정보와 연결하지 않는다.
+
+    가격이 없는 정상 응답(무료·미출시·가격 미정)은 SUCCESS + 가격 NULL로 둔다(`has_price` False).
+    """
+
+    __tablename__ = "game_price"
+
+    appid: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=False)
+    cc: Mapped[str] = mapped_column(String(8), primary_key=True)
+    currency: Mapped[str | None] = mapped_column(String(8))
+    # Steam 최소 단위×100(예: KRW 1100000 = ₩11,000)
+    initial_price: Mapped[int | None] = mapped_column(BigInteger)
+    final_price: Mapped[int | None] = mapped_column(BigInteger)
+    discount_percent: Mapped[int | None] = mapped_column(Integer)
+    fetch_status: Mapped[FetchStatus] = mapped_column(fetch_status_enum, nullable=False)
+    fetched_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    retry_after: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    failure_reason: Mapped[str | None] = mapped_column(String(64))
+
+
 class ChartSource(StrEnum):
     TOP_SELLERS = "TOP_SELLERS"  # 주간 판매 순위(전 세계)
     MOST_PLAYED = "MOST_PLAYED"  # 주간 최다 플레이(전 세계)

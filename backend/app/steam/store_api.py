@@ -1,6 +1,7 @@
 """Steam 상점 appdetails 클라이언트(비문서화 엔드포인트).
 
 장르를 받으려면 게임 1개당 요청 1번이 필요하다(다중 appid는 price_overview 필터에서만 허용, 2026-11-03 확인).
+가격은 `filters=price_overview`로 여러 게임을 한 번에 받는다(200개 정상, 400개는 HTTP 500 — 2026-11-03 확인).
 결과는 예외 대신 FetchResult로 돌려주고, 상태 판정은 app.metadata.state가 맡는다.
 """
 
@@ -58,6 +59,30 @@ class FetchResult:
     reason: str = field(default="")
 
 
+class PriceOverview(_Loose):
+    currency: str
+    initial: int
+    final: int
+    discount_percent: int
+
+
+class _PriceData(_Loose):
+    price_overview: PriceOverview | None = None
+
+
+class _PriceEntry(_Loose):
+    success: bool
+    # 가격이 없는 게임(무료·미출시)은 data가 빈 배열([])로 온다.
+    data: _PriceData | list[object] | None = None
+
+
+@dataclass(frozen=True)
+class PriceResult:
+    outcome: Outcome
+    price: PriceOverview | None = None  # OK인데 None이면 가격 없음
+    reason: str = ""
+
+
 class StoreApi:
     def __init__(self, http: httpx.AsyncClient, cc: str, language: str) -> None:
         self._http = http
@@ -91,3 +116,45 @@ class StoreApi:
         if entry.data is None:
             return FetchResult(Outcome.ERROR, reason="schema")
         return FetchResult(Outcome.OK, data=entry.data)
+
+    async def prices(self, appids: list[int], cc: str) -> dict[int, PriceResult]:
+        """한 번의 요청으로 여러 게임의 가격을 받는다. 요청 자체가 실패하면 모든 게임에 같은 결과를 준다."""
+
+        def all_(outcome: Outcome, reason: str) -> dict[int, PriceResult]:
+            return {a: PriceResult(outcome, reason=reason) for a in appids}
+
+        try:
+            res = await self._http.get(
+                APPDETAILS_URL,
+                params={"appids": ",".join(map(str, appids)), "filters": "price_overview", "cc": cc},
+            )
+        except httpx.TimeoutException:
+            return all_(Outcome.ERROR, "timeout")
+        except httpx.HTTPError as exc:
+            return all_(Outcome.ERROR, f"network:{type(exc).__name__}")
+        if res.status_code in (429, 403):
+            return all_(Outcome.RATE_LIMITED, f"http_{res.status_code}")
+        if res.status_code != 200:
+            return all_(Outcome.ERROR, f"http_{res.status_code}")
+        try:
+            body = res.json()
+            if not isinstance(body, dict):
+                raise TypeError
+        except (ValueError, TypeError):
+            logger.warning("price response schema mismatch: %s appids", len(appids))
+            return all_(Outcome.ERROR, "schema")
+
+        results: dict[int, PriceResult] = {}
+        for appid in appids:
+            try:
+                entry = _PriceEntry.model_validate(body[str(appid)])
+            except (KeyError, ValidationError):
+                results[appid] = PriceResult(Outcome.ERROR, reason="schema")
+                continue
+            if not entry.success:
+                results[appid] = PriceResult(Outcome.NOT_FOUND, reason="store_not_found")
+            elif isinstance(entry.data, _PriceData):
+                results[appid] = PriceResult(Outcome.OK, price=entry.data.price_overview)
+            else:
+                results[appid] = PriceResult(Outcome.OK)
+        return results

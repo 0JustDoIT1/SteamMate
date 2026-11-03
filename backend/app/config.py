@@ -51,6 +51,12 @@ class Settings(BaseSettings):
     owned_cache_ttl_seconds: int = 300
     # 장르 수집률이 이 값 이상이면 GENRE_AWARE, 미만이면 PLAYTIME_BASED — PRD 임시 가정 90%
     recommendation_genre_threshold: float = 0.9
+    # 가격 캐시(game_price) — 임시값(DEVLOG 5단계 참조)
+    price_ttl_seconds: int = 3600
+    price_retry_error_seconds: int = 5 * 60
+    price_retry_not_found_seconds: int = 3600
+    # 사용자 요청 한 번에 받는 가격 묶음(100개) 수. 나머지는 화면 폴링이 이어 받는다.
+    price_max_batches_per_request: int = 3
 
     @property
     def cookie_secure(self) -> bool:

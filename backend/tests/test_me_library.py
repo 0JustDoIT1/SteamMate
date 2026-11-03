@@ -143,6 +143,7 @@ async def test_library_includes_genres_and_coverage(client, login, steam_handler
     assert by_id[440]["genres"] == ["액션", "무료 플레이"] and by_id[440]["metadataStatus"] == "SUCCESS"
     assert by_id[570]["metadataStatus"] == "PENDING" and by_id[570]["genres"] == []
     assert by_id[400]["appType"] == "music"
+    assert by_id[570]["headerImage"] is None  # 메타데이터 수집 전
     assert body["metadataCoverage"] == {
         "success": 1, "pending": 1, "temporaryError": 1, "notAvailable": 1, "total": 4, "ratio": 0.3333,
     }

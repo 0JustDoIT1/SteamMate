@@ -22,6 +22,7 @@ from app.metadata.service import MetadataLookup, MetadataService
 from app.metadata.state import MetadataPolicy
 from app.models import ChartSource
 from app.owned_cache import OwnedGamesCache
+from app.prices import PriceLookup, PricePolicy, PriceService
 from app.routers import auth, dashboard, me
 from app.steam.charts_api import ChartsApi
 from app.steam.store_api import StoreApi
@@ -36,7 +37,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     if isinstance(metadata, MetadataService):
         metadata.start()
         if settings.collector_enabled:
-            collector = build_collector(settings, app.state.http, metadata)
+            collector = build_collector(settings, app.state.http, metadata, app.state.prices)
             interval = timedelta(seconds=settings.collector_run_interval_seconds)
             collector_task = asyncio.create_task(run_periodically(collector, interval))
     yield
@@ -50,11 +51,32 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     await dispose_engine()
 
 
-def build_metadata_service(settings: Settings, http: httpx.AsyncClient) -> MetadataService:
+def build_store_limiter(settings: Settings) -> TokenBucket:
+    # 메타데이터와 가격이 같은 상점 서버를 부르므로 한 레이트리미터를 함께 쓴다.
+    return TokenBucket(settings.store_rate_per_second, settings.store_burst)
+
+
+def build_price_service(settings: Settings, http: httpx.AsyncClient, limiter: TokenBucket) -> PriceService:
+    return PriceService(
+        get_sessionmaker,
+        StoreApi(http, cc=settings.store_cc, language=settings.store_language),
+        limiter,
+        PricePolicy(
+            ttl=timedelta(seconds=settings.price_ttl_seconds),
+            retry_error=timedelta(seconds=settings.price_retry_error_seconds),
+            retry_rate_limited=timedelta(seconds=settings.metadata_retry_rate_limited_seconds),
+            retry_not_found=timedelta(seconds=settings.price_retry_not_found_seconds),
+        ),
+        cc=settings.store_cc,
+        rate_limit_pause_seconds=settings.store_rate_limit_pause_seconds,
+    )
+
+
+def build_metadata_service(settings: Settings, http: httpx.AsyncClient, limiter: TokenBucket) -> MetadataService:
     return MetadataService(
         get_sessionmaker,
         StoreApi(http, cc=settings.store_cc, language=settings.store_language),
-        TokenBucket(settings.store_rate_per_second, settings.store_burst),
+        limiter,
         MetadataPolicy(
             success_ttl=timedelta(seconds=settings.metadata_success_ttl_seconds),
             not_available_ttl=timedelta(seconds=settings.metadata_not_available_ttl_seconds),
@@ -68,7 +90,9 @@ def build_metadata_service(settings: Settings, http: httpx.AsyncClient) -> Metad
     )
 
 
-def build_collector(settings: Settings, http: httpx.AsyncClient, metadata: MetadataLookup) -> Collector:
+def build_collector(
+    settings: Settings, http: httpx.AsyncClient, metadata: MetadataLookup, prices: PriceLookup
+) -> Collector:
     weekly = timedelta(seconds=settings.chart_weekly_interval_seconds)
     featured = timedelta(seconds=settings.chart_featured_interval_seconds)
     return Collector(
@@ -92,6 +116,7 @@ def build_collector(settings: Settings, http: httpx.AsyncClient, metadata: Metad
             },
         ),
         cc=settings.store_cc,
+        prices=prices,
     )
 
 
@@ -99,8 +124,9 @@ def create_app(
     http: httpx.AsyncClient | None = None,
     metadata: MetadataLookup | None = None,
     dashboard_service: DashboardService | None = None,
+    prices: PriceLookup | None = None,
 ) -> FastAPI:
-    """http·metadata·dashboard_service: 테스트에서 가짜를 주입한다(기본은 실제 구현)."""
+    """http·metadata·dashboard_service·prices: 테스트에서 가짜를 주입한다(기본은 실제 구현)."""
     settings = get_settings()
     app = FastAPI(title="SteamMate API", lifespan=lifespan)
 
@@ -108,7 +134,9 @@ def create_app(
     app.state.sessions = SessionManager(settings.session_secret, settings.session_max_age_seconds)
     app.state.nonces = NonceStore()
     app.state.owned = OwnedGamesCache(settings.owned_cache_ttl_seconds)
-    app.state.metadata = metadata or build_metadata_service(settings, app.state.http)
+    store_limiter = build_store_limiter(settings)
+    app.state.metadata = metadata or build_metadata_service(settings, app.state.http, store_limiter)
+    app.state.prices = prices or build_price_service(settings, app.state.http, store_limiter)
     app.state.dashboard = dashboard_service or DashboardService(
         get_sessionmaker, app.state.metadata, cc=settings.store_cc
     )

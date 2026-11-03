@@ -17,7 +17,7 @@ os.environ["APP_ENV"] = "test"
 
 from app.config import get_settings
 from app.db import dispose_engine
-from tests.fakes import FakeMetadata
+from tests.fakes import FakeMetadata, FakePrices
 
 FIXTURES = Path(__file__).parent / "fixtures"
 TEST_STEAM_ID = "76561198000000001"  # 실제 계정이 아닌 테스트용 값
@@ -54,12 +54,17 @@ def fake_metadata() -> FakeMetadata:
 
 
 @pytest.fixture
-async def client(steam_handler, fake_metadata) -> AsyncIterator[httpx.AsyncClient]:
+def fake_prices() -> FakePrices:
+    return FakePrices()
+
+
+@pytest.fixture
+async def client(steam_handler, fake_metadata, fake_prices) -> AsyncIterator[httpx.AsyncClient]:
     get_settings.cache_clear()
     from app.main import create_app
 
     external = httpx.AsyncClient(transport=httpx.MockTransport(lambda r: steam_handler["fn"](r)))
-    app = create_app(http=external, metadata=fake_metadata)
+    app = create_app(http=external, metadata=fake_metadata, prices=fake_prices)
     transport = httpx.ASGITransport(app=app, raise_app_exceptions=False)
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as ac:
         ac.app = app  # 테스트에서 세션 발급 등에 사용
@@ -90,7 +95,7 @@ async def db_sessionmaker(migrated_db) -> AsyncIterator:
 
     engine = create_async_engine(migrated_db)
     async with engine.begin() as conn:
-        await conn.execute(text("TRUNCATE game_metadata, chart_snapshot, chart_entry"))
+        await conn.execute(text("TRUNCATE game_metadata, game_price, chart_snapshot, chart_entry"))
     yield async_sessionmaker(engine, expire_on_commit=False)
     await engine.dispose()
 

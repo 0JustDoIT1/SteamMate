@@ -27,9 +27,9 @@ def meta(appid: int, *genres: str, app_type: str = "game") -> MetadataSnapshot:
     return MetadataSnapshot(appid, FetchStatus.SUCCESS, app_type, genres, T, header_image=f"https://img/{appid}.jpg")
 
 
-def run(owned, snapshots, *, mode=GA, prefer=False, exclude=frozenset(), ratio=1.0):
+def run(owned, snapshots, *, mode=GA, exclude=frozenset(), ratio=1.0):
     return recommend(
-        owned, snapshots, mode=mode, prefer_unplayed=prefer, exclude=exclude, coverage_ratio=ratio, now=NOW
+        owned, snapshots, mode=mode, exclude=exclude, coverage_ratio=ratio, now=NOW
     )
 
 
@@ -64,11 +64,6 @@ def test_genre_aware_scores_and_reasons():
     assert top.header_image == "https://img/2.jpg"
     for r in recs:
         assert r.score == round(sum(x.contribution for x in r.reasons), 4)
-
-
-def test_prefer_unplayed_raises_unplayed_weight():
-    recs, _ = run(OWNED_GAMES, SNAPSHOTS, prefer=True)
-    assert scores(recs) == [(2, 0.95), (4, 0.7), (3, 0.5)]
 
 
 def test_recent_genre_uses_two_week_playtime():
@@ -114,13 +109,6 @@ def test_playtime_based_uses_recent_launch_and_notes_low_coverage():
     assert not any(r.factor is ReasonFactor.GENRE_MATCH for rec in recs for r in rec.reasons)
 
 
-def test_playtime_based_ignores_prefer_unplayed():
-    owned = [game(1, 0), game(2, 30, days_ago=10)]
-    with_prefer, _ = run(owned, {}, mode=PB, prefer=True)
-    without, _ = run(owned, {}, mode=PB, prefer=False)
-    assert scores(with_prefer) == scores(without) == [(2, 0.825)]
-
-
 def test_same_input_gives_same_result_regardless_of_order():
     """PRD 재현성: 같은 입력·같은 메타데이터면 같은 추천(입력 순서와 무관)."""
     first, _ = run(OWNED_GAMES, SNAPSHOTS)
@@ -160,16 +148,15 @@ async def test_recommendations_endpoint(client, login, steam_handler, fake_metad
     steam_handler["fn"] = routes(**{OWNED: load_fixture("steam/owned_games_public.json")})
     login()
 
-    res = await client.get("/me/recommendations", params={"preferUnplayed": "true"})
+    res = await client.get("/me/recommendations", params={})
 
     assert res.status_code == 200
     body = res.json()
     assert body["recommendationMode"] == "GENRE_AWARE"
-    assert body["preferUnplayed"] is True
     assert body["candidateCount"] == 1 and body["excludedCount"] == 0
     rec = body["recommendations"][0]
     assert rec["appid"] == 400 and rec["genres"] == ["어드벤처"]
-    assert rec["reasons"][0] == {"factor": "UNPLAYED", "detail": "미플레이", "contribution": 0.5}
+    assert rec["reasons"][0] == {"factor": "UNPLAYED", "detail": "미플레이", "contribution": 0.3}
     assert body["metadataCoverage"]["ratio"] == 1.0
     assert body["metadataSnapshotAt"].startswith("2026-11-01")
     assert body["calculatedAt"]
@@ -188,7 +175,7 @@ async def test_recommendations_exclude_and_low_coverage(client, login, steam_han
     assert body["excludedCount"] == 1
 
 
-@pytest.mark.parametrize("params", [{"exclude": "abc"}, {"exclude": "0"}, {"preferUnplayed": "maybe"}])
+@pytest.mark.parametrize("params", [{"exclude": "abc"}, {"exclude": "0"}])
 async def test_recommendations_invalid_input(client, login, steam_handler, params):
     steam_handler["fn"] = routes(**{OWNED: load_fixture("steam/owned_games_public.json")})
     login()
@@ -217,3 +204,4 @@ async def test_steam_error_propagates(client, login, steam_handler):
     login()
     res = await client.get("/me/recommendations")
     assert res.json()["error"]["code"] == "STEAM_RATE_LIMITED"
+

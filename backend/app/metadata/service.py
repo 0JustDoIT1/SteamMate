@@ -49,6 +49,7 @@ class MetadataSnapshot:
     fetched_at: datetime | None = None
     name: str | None = None
     header_image: str | None = None
+    dlc_appids: tuple[int, ...] = ()
 
 
 class MetadataLookup(Protocol):
@@ -209,4 +210,5 @@ def _snapshot(row: GameMetadata) -> MetadataSnapshot:
         fetched_at=row.fetched_at,
         name=row.name,
         header_image=row.header_image,
+        dlc_appids=tuple(row.dlc_appids_json or ()),
     )

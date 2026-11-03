@@ -5,6 +5,7 @@
 - 실패는 FAILED 스냅샷으로 남기고, 대시보드는 마지막 SUCCESS를 계속 보여준다.
 - 판매 순위는 과거 주차 조회가 가능해 빠진 주(최근 52주)를 채운다(월간·연간 집계용).
 - 수집한 게임은 메타데이터 캐시에 낮은 우선순위로 보강을 요청한다(사용자 요청이 먼저).
+- 미보유 게임 추천 후보 풀의 가격을 미리 받아 둔다(사용자 요청 때 기다리지 않게).
 """
 
 import asyncio
@@ -16,9 +17,10 @@ from datetime import UTC, datetime, timedelta
 from sqlalchemy import delete, func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from app.chart_queries import latest_success_ids
+from app.chart_queries import candidate_pool, latest_success_ids
 from app.metadata.service import MetadataLookup, Priority
 from app.models import ChartEntry, ChartSnapshot, ChartSource, SnapshotStatus
+from app.prices import PriceLookup
 from app.steam.charts_api import ChartFetch, ChartsApi
 
 logger = logging.getLogger(__name__)
@@ -53,6 +55,7 @@ class Collector:
         policy: CollectorPolicy,
         cc: str,
         now: Callable[[], datetime] = lambda: datetime.now(UTC),
+        prices: PriceLookup | None = None,
     ) -> None:
         self._sessionmaker = sessionmaker
         self._charts = charts
@@ -60,6 +63,7 @@ class Collector:
         self._policy = policy
         self._cc = cc
         self._now = now
+        self._prices = prices
 
     async def run_once(self) -> CollectReport:
         report = CollectReport(stored=[], skipped=[], failed=[])
@@ -80,6 +84,11 @@ class Collector:
         # 잠금·트랜잭션이 끝난 뒤 보강을 요청한다(메타데이터 서비스는 자체 세션을 쓴다).
         if appids:
             await self._metadata.lookup(appids, Priority.LOW)
+        if self._prices is not None and report.ran:
+            async with self._sessionmaker()() as session:
+                pool, _ = await candidate_pool(session, self._cc)
+            # 만료된 것만 다시 받는다(100개씩 묶음, 상점 레이트리미터 공유).
+            await self._prices.lookup(pool)
         logger.info("collector done stored=%s skipped=%s failed=%s", report.stored, report.skipped, report.failed)
         return report
 
