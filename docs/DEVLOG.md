@@ -12,9 +12,9 @@
 | 0 | PRD v6 반영, Claude Code 가드레일 | ✅ 완료 |
 | 1 | 실행 환경 정비, 테스트 기반, CI, 프론트 Provider·프록시 | ✅ 완료 (CI 통과) |
 | 2 | Steam 로그인 + `/me/library` 기본 조회 | ✅ 완료 (실계정 로그인·로그아웃 확인) |
-| 3a | 메타데이터 캐시(game_metadata, 레이트리미터) | ✅ 완료 (실계정 58개 보강 확인, 커밋 전) |
-| 3b | 소스 스파이크 → 인기 대시보드 | ⏭ 다음 |
-| 4 | 라이브러리 분석 + 보유 게임 추천·이유 | 대기 |
+| 3a | 메타데이터 캐시(game_metadata, 레이트리미터) | ✅ 완료 |
+| 3b | 소스 스파이크 → 인기 대시보드 | ✅ 완료 (브라우저 확인, 커밋) |
+| 4 | 라이브러리 분석 + 보유 게임 추천·이유 | ⏭ 다음 |
 | 5 | 가격·할인(위시리스트·DLC·미보유 추천) | 대기 |
 | 6 | 뉴스 조회·정제 (R1 완료) | 대기 |
 | 7 | Full Context vs RAG 실험 | 대기 (LLM 제공자 결정 필요) |
@@ -54,6 +54,21 @@
 | 11-03 | `success:false`는 연속 2회일 때만 NOT_AVAILABLE, 장르 없는 정상 응답은 즉시 NOT_AVAILABLE | PRD "재확인으로 확정" |
 | 11-03 | 만료된 SUCCESS의 갱신이 일시 실패하면 기존 장르 유지 | 일시 장애로 coverage가 떨어지지 않게 |
 | 11-03 | `game_metadata.app_type` 컬럼 추가 (PRD 반영) | 사운드트랙·도구 등 비게임 제외용 |
+| 11-03 | 대시보드 소스 5종: TOP_SELLERS(한국 주간 판매)·MOST_PLAYED(주간)·CONCURRENT(현재)·SPECIALS·NEW_RELEASES, coming_soon 제외 (PRD 반영) | 3b 스파이크에서 4개 API 모두 사용 가능 확인 |
+| 11-03 | 순위 변화는 Steam `last_week_rank` 사용, 스냅샷 보관 12주 → 2주 (PRD 반영) | 직접 이력 계산 불필요 |
+| 11-03 | `chart_entry`에 이름·지난주 순위·가격·할인율·이미지 컬럼 추가 (PRD 반영) | 대시보드 표시용 |
+| 11-03 | 수집 1시간마다, 소스별 간격 CONCURRENT 1h / 기획·주간 6h, 주간 차트는 집계일이 같으면 저장 생략 (임시) | |
+| 11-03 | 로그인 시 개인화는 백엔드에서 계산, 보유 목록은 메모리 5분 TTL 캐시(저장 X) (PRD 반영) | 취향 점수 정의를 4단계 추천과 공유 |
+| 11-03 | 대시보드 판매·최다 플레이에 주간/월간/연간 탭. 월간=최근 4주, 연간=최근 52주 주간 순위 합산(주마다 101−순위점), "Steam 공식 순위 아님" 명시 (PRD 반영) | 사용자 요청. Steam에 월·연 순위 API 없음 |
+| 11-03 | 판매 순위는 과거 52주 백필(`start_date` 지정 조회 가능), 최다 플레이는 과거 조회 불가라 쌓이는 만큼만. 주간 차트 보관 53주(집계 주 기준) (PRD 반영) | 3b 추가 스파이크 |
+| 11-03 | `game_metadata.header_image`에 이미지 **주소만** 저장, 대시보드는 이 값 우선 → 추정 주소 → 로딩 실패 시 대체 칸 (PRD 반영) | 추정 주소가 차트 항목의 17~37% 404 |
+| 11-03 | 메타데이터 대기열 우선순위: 사용자 화면(HIGH) > 수집 작업(LOW), 대기 중 LOW는 HIGH 요청 시 앞당김 (PRD 반영) | 1년치 차트 게임이 사용자 라이브러리 보강을 밀어내지 않도록 |
+| 11-03 | 대시보드 공개 부분 2분 메모리 캐시, 개인화는 그 위에 덧붙임 | 52주 집계를 요청마다 재계산하지 않도록 |
+| 11-03 | 순위 차트 기준 통일: 판매 순위도 **전 세계** (PRD 반영). 할인·신작은 상점 기획 목록이며 가격만 한국 상점 기준 | 사용자 지적. 최다 플레이·접속은 국가별 제공 없음 |
+| 11-03 | 많이 플레이한 게임은 **주간만**(월·연 탭 제거), 보관 2주로 복귀 (PRD 반영) | 사용자 결정. 과거 기록이 없어 1년 뒤에야 의미가 생김 |
+| 11-03 | **가드레일 추가**: 새 라이브러리는 "직접 구현" 포함 장단점 비교 후 사용자가 선택(CLAUDE.md), 패키지 설치 명령은 항상 확인 창(`permissions.ask`) | 사용자 요청 |
+| 11-03 | 대시보드를 2단 세로 표 + 추이 그래프로 개편. 그래프는 **shadcn/ui Charts(recharts)**, 설치는 수동 복사 방식 (PRD 반영) | 사용자 선택(직접 SVG·recharts·uPlot 비교 후). CLI는 전체 테마·설정을 건드릴 위험 |
+| 11-03 | 추이: 판매 순위 최근 12주 순위, 현재 접속 최근 7일(3시간 단위)·24시간 최고. 최다 플레이·할인·신작은 그래프 없음 | 보유 데이터 기준 |
 
 **보류 중인 결정**
 - 추천 점수 가중치 확정 (4·7단계 착수 시)
@@ -216,6 +231,140 @@
 **참고**
 - 58개에 약 90초 = 설정 속도(0.6회/초)대로 동작. 1,000개 라이브러리는 약 28분 예상 → 4단계 화면에서 진행률 표시 필요
 - 단일 프로세스 전제: 대기열·진행 중 목록은 메모리. 서버 재시작 시 PENDING은 10분 뒤 다음 요청에서 복구
+
+### 3b단계 — 인기 대시보드 (2026-11-03)
+
+**스파이크** [확인]
+| 소스 | 결과 |
+|---|---|
+| `IStoreTopSellersService/GetWeeklyTopSellers` | 파라미터를 `input_json`으로 보내야 동작(일반 쿼리는 빈 응답). 키 불필요. 1~100위, `last_week_rank`·`consecutive_weeks`·이름, `start_date` |
+| `ISteamChartsService/GetMostPlayedGames` | 키 불필요. 100위, `last_week_rank`·`peak_in_game`, `rollup_date`. 이름 없음 |
+| `ISteamChartsService/GetGamesByConcurrentPlayers` | 키 필요. 100위, `concurrent_in_game` |
+| store `featuredcategories` | specials 10·new_releases 30(모두 `type=0`, 중복 없음), KRW 가격·할인율·이미지 |
+| 헤더 이미지 | `shared.akamai.steamstatic.com/store_item_assets/steam/apps/{appid}/header.jpg` 200 |
+
+**변경**
+- `app/models.py`: `ChartSnapshot`·`ChartEntry`, enum `chart_source`·`snapshot_status` / 마이그레이션 `eb78d475c786`(downgrade enum 정리 수정)
+- `app/steam/charts_api.py`: 4개 소스 → `ChartFetch` 정규화, 실패·빈 목록은 failure로
+- `app/jobs/collector.py`: 트랜잭션 단위 advisory lock, 소스별 간격·집계일 중복 생략, FAILED 스냅샷 기록, 2주 보관(소스별 최신 성공본은 유지), 수집 게임 메타데이터 보강 요청 / `app/jobs/collect.py`: 수동 실행 CLI
+- `app/owned_cache.py`: 보유 목록 메모리 TTL 캐시(공개 응답만), `/me/library`도 사용
+- `app/taste.py`: 장르 취향·매칭도 순수 함수(4단계 재사용)
+- `app/dashboard.py`, `app/routers/dashboard.py`: `/steam/dashboard`(비로그인 가능), 섹션별 20개, 순위 변화·NEW, 장르 분포, 로그인 시 보유·매칭도. 비공개·Steam 오류면 개인화 없이 응답, 수집 전이면 `DATA_NOT_READY`
+- `app/main.py`: lifespan에서 주기 수집 시작·종료, `create_app(dashboard_service=)` 주입
+- 설정: 수집 간격·보관·보유 캐시 TTL, `requirements.txt`에 `cachetools==7.2.8`
+- 프론트: `features/dashboard/queries.ts`(수집 전이면 30초 재확인), `app/dashboard-view.tsx`(섹션 가로 목록, 순위 변화, 가격·할인, 보유·취향 매칭, 장르 막대), `lib/format.ts`, 첫 화면에 대시보드 배치
+
+**겪은 문제**
+- 세션 단위 advisory lock은 중간 commit 시 연결이 풀에 반환되어 다른 연결에서 해제를 시도 → 잠금 누수 가능. 트랜잭션 단위(`pg_try_advisory_xact_lock`) + 단일 트랜잭션으로 변경
+- 주간 차트 집계일이 바뀌지 않으면 새 스냅샷이 없어 2주 정리 시 유일한 성공본까지 삭제될 수 있음 → 소스별 최신 성공본 보존
+- 마이그레이션 왕복 검증을 개발 DB에서 실행해 3a 메타데이터 55건이 삭제됨(공용 캐시라 재수집됨). 이후 왕복 검증은 테스트 DB에서만
+
+**검증**
+| 항목 | 결과 |
+|---|---|
+| pytest (DB 포함) | 145 passed — 차트 파싱 9, 취향 4, 보유 캐시 4, 수집 7(간격 생략·집계일 생략·실패 후 재시도·잠금·동시 실행·보관), 대시보드 7(수집 전 503·섹션·실패 섹션 숨김·개인화·비공개/오류 폴백·최신 스냅샷) [확인] |
+| Alembic up→down→up, `alembic check` | 통과 [확인] |
+| 실데이터 수집(CLI) | 5개 소스 저장(100/100/100/10/30), 메타데이터 약 200건 325초, 429 0회 [확인] |
+| `/api/steam/dashboard` (프록시 경유) | 비로그인 5개 섹션·장르 분포(152개 중 147개), 로그인 시 판매 상위 20 중 보유 3개·매칭도 표시 [확인] |
+| FE lint / typecheck / build | 통과 [확인] |
+| 브라우저 화면 | 사용자 확인 대기 |
+
+**참고**
+- TOP_SELLERS의 `start_date`가 2026-10-20(약 2주 전)로 옴 — Steam이 집계 주 시작일을 주는 것으로 보이며 화면에는 수집 시각만 표시 [추정]
+- 메타데이터 `success:false` 6건 존재(재확인 대기)
+
+#### 3b 추가 — 이미지·기간 탭·우선순위 (2026-11-03)
+
+**스파이크** [확인]
+| 확인 | 결과 |
+|---|---|
+| 추정 이미지 주소(`.../apps/{appid}/header.jpg`) | 판매 37%·최다 플레이 18%·접속 17% 404. 최근 게임은 해시가 들어간 새 경로 사용 |
+| appdetails `header_image` | 정확한 주소 제공(새 경로 포함) |
+| GetWeeklyTopSellers `start_date` | 1·4·52주 전 지정 시 해당 주 순위 반환 |
+| GetMostPlayedGames 과거 조회 | `rollup_date` 지정(쿼리·input_json 모두) 무시, 항상 최신 |
+
+**변경**
+- 마이그레이션 `02b117ec3418`: `game_metadata.header_image`. 기존 정상 응답 행(SUCCESS, 장르만 없는 NOT_AVAILABLE)은 한 번 보충 조회
+- `MetadataService`: `PriorityQueue` + `Priority.HIGH/LOW`, 대기 중 항목 앞당기기(옛 사본은 워커가 건너뜀). 라이브러리·대시보드 표시·개인화 = HIGH, 수집 = LOW
+- `Collector`: 판매 순위 과거 주 백필(판매 순위 갱신 주기에만, 보관 기간 안의 주만), 소스별 보관 기간(주간 53주·집계 주 기준 / 기타 14일)
+- `app/chart_queries.py`: `latest_success_ids()` — "최신" = 집계 주가 가장 늦은 것(같으면 늦게 수집) — 수집 정리·대시보드 공용 (`postgresql.distinct_on`)
+- `DashboardService`: 주간 차트 `periods`(MONTH 4주·YEAR 52주, 같은 주는 최신 수집 1개, 점수·순위권 주 수·최고 순위), 이미지 우선순위, 공개 부분 캐시
+- `CamelModel`: 출력 스키마에서 기본값 필드도 필수로 표시(`json_schema_serialization_defaults_required`) → 프론트 타입과 실제 응답 일치
+- 프론트: `components/game-image.tsx`(로딩 실패 시 대체 칸), 섹션별 주간/월간/연간 탭(1주만 모였으면 비활성), 합산 기준 문구, "순위권 N주 · 최고 M위"
+
+**겪은 문제**
+- **"최신 스냅샷 = id 최댓값"이 백필 후 틀림**: 과거 주를 1→51주 전 순서로 저장해 51주 전이 가장 큰 id → 대시보드가 1년 전 순위를 "이번 주"로 보여주고 정리도 엉뚱한 행을 보존할 뻔함. 테스트 실패로 발견, `DISTINCT ON (source, cc) ORDER BY period_start DESC, captured_at DESC`로 수정 + 회귀 테스트
+- 백필과 보관 정리가 경계 주를 서로 지우고 다시 받는 반복 가능 → 백필도 보관 기간 안의 주만
+- 백필이 매시간 실행되어 받지 못한 주를 반복 요청할 수 있음 → 판매 순위 갱신 주기에만 실행
+
+**검증**
+| 항목 | 결과 |
+|---|---|
+| pytest (DB 포함) | 155 passed [확인] |
+| 마이그레이션 왕복·`alembic check` | 테스트 DB에서 통과, 개발 DB는 upgrade만 [확인] |
+| 실데이터 백필 | 51주 추가 → 판매 순위 52주(2025-10-28~2026-10-20) [확인] |
+| 기간 집계 | 이번 주 1위 Call of Duty(최신 주 정상), 월간(4/4주)·연간(52/52주) 1위 PUBG, 최다 플레이 월·연 1/4·1/52주 [확인] |
+| 이미지 | 보충 후 판매·할인·신작 100%, 최다 플레이·접속 각 2건 404 — FiveM(장르 없는 행, 보충 규칙 확장으로 해결) / 3393110(상점 `success:false`, 대체 칸 표시) [확인] |
+| FE lint / typecheck / build | 통과 [확인] |
+| 브라우저 화면 | 사용자 확인: 판매 순위 기준 불일치, 탭 전환 시 스크롤 튐 → 아래에서 수정 |
+
+#### 3b 추가 — 기준 통일·스크롤 (2026-11-03)
+
+**스파이크** [확인] — GetWeeklyTopSellers
+| 요청 | 결과 |
+|---|---|
+| 최상위 `country_code` = KR / US | 국가별로 다른 목록 |
+| `country_code` 생략·빈 값 + `context.country_code` KR/US/DE | **세 경우 동일한 100개 목록**, 국가별 목록과 다름 → 전 세계 순위로 판단. 과거 주 조회·`last_week_rank`도 동작 |
+| `country_code` = GLOBAL·global·WW·XX, context 국가 없음 | 빈 응답 |
+
+**변경**
+- `charts_api.top_sellers()`: 최상위 `country_code` 제거(전 세계), context 국가는 유지
+- 개발 DB의 한국 기준 판매 순위 52주 삭제 후 전 세계 기준으로 재수집·백필(52주) — 공개 집계 캐시라 재수집 가능
+- 프론트: 섹션 설명 "전 세계 …", 할인·신작은 "가격은 한국 상점 기준"
+- **스크롤 튐 수정**: 원인 ① 가로 목록 스크롤 위치가 탭 전환 후에도 남음 → 탭 전환 시 `scrollTo({left: 0})` ② 탭마다 카드 줄 수가 달라 섹션 높이 변화 → 카드 정보 영역을 5줄 고정(빈 줄은 공백)
+
+**검증**: pytest 155 passed, FE lint·typecheck·build 통과, 대시보드 주간 상위 5개가 전 세계 목록과 일치(월간 1위 AION 2, 연간 1위 Counter-Strike 2) [확인]
+
+**재수정 (사용자 확인: 스크롤 여전히 변동, 최다 플레이 탭 비활성이 고장처럼 보임)**
+- 스크롤: 탭 전환 때 목록 내용을 바꿔 끼우는 방식 자체가 원인(브라우저 scroll anchoring이 위치 보정 + 강제 `scrollTo`도 위치 변경). → 탭별 목록을 미리 렌더링하고 `flex`/`hidden`으로 표시만 전환, 목록에 `overflow-anchor: none`, 강제 스크롤 제거(탭별 가로 위치 유지)
+- 최다 플레이: 1주만 모인 기간은 비활성 탭 대신 "월간·연간은 데이터 수집 중 (1/4주) — Steam이 과거 기록을 제공하지 않아 매주 쌓는 중" 문구 표시, 2주 이상이면 탭 자동 표시
+- FE lint·typecheck·build 통과 [확인], 스크롤 문제 해결 (사용자 확인) [확인]
+- 이후 사용자 결정으로 최다 플레이의 월·연 집계 자체를 제거: `PERIOD_SOURCES = (TOP_SELLERS,)`, MOST_PLAYED 보관 14일. API에서 판매 순위만 `periods` 보유 확인, pytest 155 passed [확인]
+
+#### 3b 추가 — 세로 표·추이 그래프 (2026-11-03)
+
+**결정 과정**: 그래프 구현 선택지(직접 SVG / recharts / uPlot) 장단점 제시 → 사용자 "shadcn/ui Charts" 선택 → 실제 설치 내용(recharts 3.10.1 + react-is, clsx, tailwind-merge, 래퍼 소스) 확인 후 설치 방식(수동 / CLI) 재선택 → 수동
+
+**변경**
+- 패키지: `recharts@3.10.1`, `react-is@19.3.0`, `clsx@2.1.1`, `tailwind-merge@3.7.0` (운영 의존성 취약점 0). shadcn 레지스트리의 `lucide-react`는 chart.tsx가 쓰지 않아 미설치
+- `components/ui/chart.tsx`: 공식 레지스트리(new-york-v4) 소스를 검토 후 복사, `cn` import만 `@/lib/utils`로 교체. `dangerouslySetInnerHTML`은 코드 상수 색만 CSS 변수로 주입(사용자 입력 없음)
+- `lib/utils.ts`(`cn`), `globals.css`에 shadcn 최소 토큰(muted·border)과 `--chart-1`(라이트 #2a78d6 / 다크 #3987e5 — dataviz 검증 스크립트 양 모드 PASS)
+- 백엔드 `DashboardSection.trend_times` + `DashboardEntry.trend`(값 배열, 시간 축은 섹션에 한 번), `day_peak`(24시간 최고). 판매 순위 12주(합산 순위에도 같은 축), 현재 접속 7일을 3시간 구간별 최신 수집본으로 축약. 필드명 `peak_24h`는 camelCase가 `peak24H`가 되어 `day_peak`로 변경
+- 프론트 `components/sparkline.tsx`(단일 계열, 범례 없음, 툴팁, 값 없는 구간은 끊김, 순위는 위가 1위), `dashboard-view.tsx`를 2단 패널·세로 표로 재작성(10개 → 펼치기 20개), 장르 분포를 가로 막대 차트로
+
+**겪은 문제**
+- 숨긴 탭 목록 안의 차트가 크기 0으로 그려져 recharts 경고 → 숨긴 탭은 같은 크기의 빈 칸만 두고 보일 때 그래프 렌더(레이아웃 불변이라 스크롤 수정 유지)
+
+**검증**: pytest 158 passed(추이 3개 추가: 12주 순서·값, 3시간 구간·24시간 최고, 추이 없는 섹션), FE lint·typecheck·build 통과 [확인] / 화면은 사용자 확인 대기. 현재 접속 추이는 수집 시작 직후라 점이 2개 미만인 동안 "수집 중" 표시
+
+**사용자 피드백 반영 (메인 정리)**
+- 메인의 로그인 버튼·안내 제거(헤더에 있음). 로그인 실패(`/?login=failed`) 알림만 유지
+- 2단 그리드 대신 **상단 탭**(판매 순위 / 지금 접속자 / 많이 플레이한 게임 / 할인 / 신작 / 인기 장르)으로 한 번에 한 섹션만 전체 폭 표시. 판매 순위 안의 주간·월간·연간 탭 유지
+- 섹션도 미리 렌더링 후 표시만 전환, 숨긴 섹션의 그래프는 그리지 않음(스크롤 보정·크기 0 경고 방지)
+- 전체 폭에 맞춰 이미지·추이 그래프 확대
+- FE lint·typecheck·build 통과, 개발 서버 새 경고 없음 [확인] / 화면은 사용자 확인 대기
+
+**사용자 피드백 반영 (스크롤바·그래프 끊김·장르 한글)**
+- 탭 줄 오른쪽 세로 스크롤바: 가로 스크롤용 `overflow-x-auto`가 세로도 auto가 되는데, 선택 탭 밑줄용 `-mb-px`가 1px 넘쳐 생김 → `overflow-y-hidden`, 구분선을 inset 그림자로, 음수 여백 제거
+- 판매 순위 추이 끊김: 그 주 100위 밖(값 없음)이라 선이 끊기고, 앞뒤가 모두 비면 점 하나라 보이지 않음(의도된 처리였으나 읽기 어려움) → 100위 밖은 바닥선(101)으로 이어 그리고 툴팁 "100위 밖". 현재 접속은 빠진 구간을 앞뒤로 연결. 표시 판정(2점 이상)은 실제 값 기준 유지
+- 장르 한국어: Steam `l=koreana` 장르명 19개를 실제 수집해 `app/genre_labels.py` 대응표로. 내부 계산(취향·매칭)은 영어 장르명 유지, **응답 직전**에만 한국어로(대시보드는 개인화 계산 후 `_localize`, 라이브러리는 응답 생성 시). 표에 없는 장르는 영어 그대로
+- pytest 160 passed(장르 표시 2개 추가, 기존 기대값 한국어로), API 응답 장르·장르 분포 한국어 확인, FE lint·typecheck·build 통과 [확인] / 화면은 사용자 확인 대기
+
+**최종 화면 확인 (2026-11-03)**: 개발 서버(DB·백엔드·프론트) 재기동 후 사용자가 브라우저에서 전체 정상 동작 확인 [확인]. 디자인 다듬기는 이후로 미룸
+
+**탭 전환 시 좌우 흔들림 수정**: ① 탭마다 페이지 높이가 달라 세로 스크롤바가 생겼다 사라지며 폭 변화 → 처음엔 `scrollbar-gutter: stable`로 고쳤으나 짧은 페이지에도 빈 스크롤바 자리가 남아(사용자 지적) `body { width: 100vw }` + `html { overflow-x: hidden }`로 변경(스크롤바가 내용 오른쪽 끝 위에 겹침) ② 선택 탭만 `font-medium`이라 탭 폭 변화 → 모든 탭 같은 굵기, 선택은 색·밑줄로만. FE lint·typecheck 통과 [확인] / 화면은 사용자 확인 대기
+
+**탭·섹션 이름 개조식 통일**: 판매 순위 / 실시간 접속 순위(현재 동시 접속) / 주간 접속 순위(주간 최고 동시 접속, 기존 "많이 플레이한 게임") / 할인 게임 / 신작 게임 / 장르 순위. 섹션 제목·장르 기준 문구도 같은 이름으로. FE lint·typecheck 통과 [확인]
 
 ---
 

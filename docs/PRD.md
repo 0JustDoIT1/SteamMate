@@ -107,7 +107,8 @@ Browser ─ Next.js (App Router, client: TanStack Query + Zustand)
         Memory   : 뉴스·청크·임베딩, OpenID nonce
 ```
 - 인메모리 상태 때문에 백엔드는 **단일 인스턴스 전제**.
-- 수집 작업: FastAPI lifespan의 asyncio 주기 태스크(기본 6시간, 임시) + `pg_try_advisory_lock` 중복 실행 방지 + 수동 실행 CLI `python -m app.jobs.collect`.
+- 수집 작업: FastAPI lifespan의 asyncio 주기 태스크(1시간마다 실행, 소스별 갱신 간격 — CONCURRENT 1시간, SPECIALS·NEW_RELEASES 6시간, 주간 차트 6시간이며 집계일이 같으면 저장 생략, 임시) + `pg_try_advisory_lock` 중복 실행 방지 + 수동 실행 CLI `python -m app.jobs.collect`.
+- 보유 게임 목록은 DB에 저장하지 않고 프로세스 메모리에 steamId별 5분 TTL로만 캐시한다(라이브러리·대시보드·추천·할인 공용, Steam 호출 절감).
 
 ## 외부 데이터 소스
 | 용도 | 엔드포인트 | 상태 |
@@ -119,8 +120,12 @@ Browser ─ Next.js (App Router, client: TanStack Query + Zustand)
 | 뉴스 | GetNewsForApp | 공식 |
 | 위시리스트 | IWishlistService/GetWishlist/v1 | 비문서화(커뮤니티 문서만), 공개 위시리스트만 |
 | 장르·DLC·가격 | store appdetails | 비문서화 |
-| 할인·인기·신작 목록 | store /api/featuredcategories | 비문서화, 스키마 변경 가능 |
-| 주간 최다 플레이 | ISteamChartsService/GetMostPlayedGames | 공개 접근 불확실 — 구현 전 스파이크로 확인 |
+| 할인·신작 목록 | store /api/featuredcategories (`specials` 10, `new_releases` 30) | 비문서화, 스키마 변경 가능 |
+| 주간 판매 순위(전 세계) | IStoreTopSellersService/GetWeeklyTopSellers (`input_json`, 최상위 `country_code` 생략 = 전 세계) | 비문서화, 키 불필요, `last_week_rank` 제공 (2026-11-03 확인) |
+| 주간 최다 플레이 | ISteamChartsService/GetMostPlayedGames | 비문서화, 키 불필요, 100위·`last_week_rank` 제공 (2026-11-03 확인) |
+| 현재 동시 접속 순위 | ISteamChartsService/GetGamesByConcurrentPlayers | 키 필요, 100위 (2026-11-03 확인) |
+
+순위 기준 통일: 판매·최다 플레이·현재 접속 차트는 모두 **전 세계** 기준(최다 플레이·접속은 국가별 제공이 없음). 할인·신작은 순위가 아닌 상점 기획 목록이며 가격만 한국 상점(KRW) 기준으로 표시한다.
 
 모든 소스는 어댑터로 분리하고 응답을 Pydantic으로 검증한다. 구조 변경 시 TEMPORARY_ERROR + 경고 로그. 사용 불가로 확인된 소스는 해당 대시보드 섹션을 비표시한다.
 
@@ -162,10 +167,15 @@ Browser ─ Next.js (App Router, client: TanStack Query + Zustand)
 - PostgreSQL에는 공개 게임 데이터와 공개 집계 데이터만 저장한다.
 
 ## PostgreSQL
-- `game_metadata(appid PK, name, app_type, genres_json, categories_json, dlc_appids_json, fetch_status ENUM, fetched_at, expires_at, last_checked_at, retry_after, failure_reason)` — `app_type`은 Steam `type`(game·dlc·demo·music 등), 추천·대시보드에서 비게임 제외용. 게임 단위 공용 데이터이며 사용자 정보와 연결하지 않는다.
+- `game_metadata(appid PK, name, app_type, header_image NULL, genres_json, categories_json, dlc_appids_json, fetch_status ENUM, fetched_at, expires_at, last_checked_at, retry_after, failure_reason)` — `app_type`은 Steam `type`(game·dlc·demo·music 등), 추천·대시보드에서 비게임 제외용. 게임 단위 공용 데이터이며 사용자 정보와 연결하지 않는다.
 - `game_price((appid, cc) PK, currency, initial_price, final_price, discount_percent, is_free, fetch_status ENUM, fetched_at, expires_at, retry_after, failure_reason)` — TTL 기본 1시간(임시)
-- `chart_snapshot(id PK, source ENUM(MOST_PLAYED|TOP_SELLERS|SPECIALS|NEW_RELEASES), cc, captured_at, status, failure_reason)`
-- `chart_entry((snapshot_id FK, rank) PK, appid, metric_value NULL)` + appid 인덱스. 12주(임시) 후 삭제.
+- `chart_snapshot(id PK, source ENUM(TOP_SELLERS|MOST_PLAYED|CONCURRENT|SPECIALS|NEW_RELEASES), cc, captured_at, period_start NULL, status, failure_reason)` — `period_start`는 Steam 주간 집계 기준일(주간 차트만).
+- `chart_entry((snapshot_id FK, rank) PK, appid, name NULL, last_week_rank NULL, metric_value NULL, final_price NULL, original_price NULL, discount_percent NULL, currency NULL, image_url NULL)` + appid 인덱스. `metric_value`: TOP_SELLERS=연속 순위권 주 수, MOST_PLAYED=주간 최고 동시 접속, CONCURRENT=현재 동시 접속. 순위 변화는 Steam이 주는 `last_week_rank`로 계산한다. 보관: TOP_SELLERS는 기간 집계를 위해 53주(집계 주 기준), 그 외(MOST_PLAYED 포함)는 2주(임시). 소스별 최신 성공본은 보관 기간과 무관하게 유지.
+- `header_image`: appdetails가 주는 정확한 헤더 이미지 **주소(URL)만** 저장(이미지 파일은 저장하지 않으며 브라우저가 Steam CDN에서 직접 받음). 대시보드는 이 값을 우선 사용하고, 없으면 추정 주소, 로딩 실패 시 대체 표시.
+
+**대시보드 기간 집계(주/월/연)**: 판매 순위 섹션에만 주간·월간·연간 탭. 월간 = 최근 4주, 연간 = 최근 52주의 주간 순위를 합산(주마다 `101 − 순위`점, 같은 주는 최신 스냅샷 1개). Steam 공식 월간·연간 순위가 아님을 화면에 명시. 판매 순위는 과거 주차 조회가 가능해 52주를 백필한다. 최다 플레이는 Steam이 과거 기록을 제공하지 않아 주간만 표시한다(사용자 결정).
+
+**메타데이터 보강 우선순위**: 사용자 요청(라이브러리·대시보드에 표시되는 게임)은 높은 우선순위, 수집 작업이 넣은 나머지는 낮은 우선순위로 처리한다.
 
 상태 전이(fetch_status 공통):
 | 상황 | 결과 |
@@ -291,7 +301,7 @@ Browser ─ Next.js (App Router, client: TanStack Query + Zustand)
 | BBCode/HTML 정제 | stdlib `html.parser` (한계 시 `beautifulsoup4`) | 6단계 |
 | 벡터 검색 | `numpy` | 7단계 |
 | LLM·임베딩·토크나이저 | 제공자 결정 후 공식 SDK | 7단계 |
-| 대시보드 그래프 | 표 우선, 필요 시 `recharts` | 보류 |
+| 대시보드 그래프 | shadcn/ui Charts(`components/ui/chart.tsx` 수동 복사) + `recharts`·`react-is`, 유틸 `clsx`·`tailwind-merge` (사용자 선택, CLI 미사용) | 3b단계 |
 | E2E | `@playwright/test` | 9단계 |
 
 위 목록 외 라이브러리는 사용자 승인 후 추가한다. 버전·호환성은 설치 시 확인한다.
