@@ -8,7 +8,7 @@ import pytest
 from sqlalchemy import select, update
 
 from app.infra.rate_limit import TokenBucket
-from app.metadata.service import MetadataService
+from app.metadata.service import MetadataService, Priority
 from app.metadata.state import MetadataPolicy
 from app.models import FetchStatus, GameMetadata
 from app.steam.store_api import StoreApi
@@ -219,3 +219,116 @@ async def test_worker_survives_unexpected_error(make_service, db_sessionmaker):
     await svc.lookup([21])
     await svc.drain()
     assert (await rows(db_sessionmaker))[21].fetch_status is FetchStatus.SUCCESS
+
+
+async def test_high_priority_jumps_ahead_of_low(make_service):
+    """수집 작업이 넣은 LOW 항목보다 사용자 요청(HIGH)이 먼저 처리된다."""
+    gate = asyncio.Event()
+    order: list[int] = []
+
+    class GatedStub(StoreStub):
+        def handler(self, request: httpx.Request) -> httpx.Response:
+            order.append(int(request.url.params["appids"]))
+            return super().handler(request)
+
+    stub = GatedStub({a: httpx.Response(200, json=details(a, ["RPG"])) for a in (1, 2, 3, 4, 99)})
+
+    class GateLimiter(TokenBucket):
+        async def acquire(self) -> None:
+            await gate.wait()
+
+    svc = make_service(stub, GateLimiter(1000, 1000))
+    svc._concurrency = 1
+    await svc.stop()
+    svc.start()  # 워커 1개로 순서를 확인
+
+    await svc.lookup([1, 2, 3, 4], Priority.LOW)
+    await svc.lookup([99], Priority.HIGH)
+    gate.set()
+    await svc.drain()
+
+    assert order[0] in (1, 99)  # 첫 항목은 이미 대기 중이던 것을 집었을 수 있다
+    assert order.index(99) <= 1
+    assert sorted(order) == [1, 2, 3, 4, 99]
+
+
+async def test_low_item_is_promoted_when_requested_with_high(make_service):
+    gate = asyncio.Event()
+    order: list[int] = []
+
+    class GatedStub(StoreStub):
+        def handler(self, request: httpx.Request) -> httpx.Response:
+            order.append(int(request.url.params["appids"]))
+            return super().handler(request)
+
+    stub = GatedStub({a: httpx.Response(200, json=details(a, ["RPG"])) for a in (1, 2, 3, 4)})
+
+    class GateLimiter(TokenBucket):
+        async def acquire(self) -> None:
+            await gate.wait()
+
+    svc = make_service(stub, GateLimiter(1000, 1000))
+    svc._concurrency = 1
+    await svc.stop()
+    svc.start()
+
+    await svc.lookup([1, 2, 3, 4], Priority.LOW)
+    await svc.lookup([4], Priority.HIGH)  # 이미 LOW로 대기 중인 4를 앞당긴다
+    gate.set()
+    await svc.drain()
+
+    assert order.index(4) <= 1
+    assert sorted(order) == [1, 2, 3, 4]  # 중복 조회 없음
+
+
+async def test_success_without_header_image_is_refreshed_once(make_service, db_sessionmaker):
+    """header_image 컬럼 추가 전에 받은 행은 한 번 보충 조회한다."""
+    t0 = datetime(2026, 11, 3, tzinfo=UTC)
+    async with db_sessionmaker() as session:
+        session.add(
+            GameMetadata(
+                appid=31,
+                fetch_status=FetchStatus.SUCCESS,
+                genres_json=[{"id": "1", "description": "Action"}],
+                fetched_at=t0,
+                expires_at=t0 + timedelta(days=7),
+            )
+        )
+        await session.commit()
+
+    body = details(31, ["Action"])
+    body["31"]["data"]["header_image"] = "https://cdn.example/31/abc/header.jpg"
+    stub = StoreStub({31: httpx.Response(200, json=body)})
+    svc = make_service(stub, now=lambda: t0 + timedelta(hours=1))
+
+    await svc.lookup([31])
+    await svc.drain()
+    snap = (await svc.lookup([31]))[31]
+
+    assert snap.header_image == "https://cdn.example/31/abc/header.jpg"
+    assert stub.calls == [31]  # 보충 후에는 다시 조회하지 않는다
+
+
+async def test_no_genres_row_without_header_image_is_refreshed_once(make_service, db_sessionmaker):
+    t0 = datetime(2026, 11, 3, tzinfo=UTC)
+    async with db_sessionmaker() as session:
+        session.add(
+            GameMetadata(
+                appid=33,
+                fetch_status=FetchStatus.NOT_AVAILABLE,
+                failure_reason="no_genres",
+                fetched_at=t0,
+                expires_at=t0 + timedelta(days=30),
+            )
+        )
+        await session.commit()
+
+    body = details(33, None, app_type="game")
+    body["33"]["data"]["header_image"] = "https://cdn.example/33/header.jpg"
+    stub = StoreStub({33: httpx.Response(200, json=body)})
+    svc = make_service(stub, now=lambda: t0 + timedelta(hours=1))
+    await svc.lookup([33])
+    await svc.drain()
+    snap = (await svc.lookup([33]))[33]
+    assert snap.status is FetchStatus.NOT_AVAILABLE and snap.header_image == "https://cdn.example/33/header.jpg"
+    assert stub.calls == [33]

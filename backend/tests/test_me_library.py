@@ -140,7 +140,7 @@ async def test_library_includes_genres_and_coverage(client, login, steam_handler
     body = (await client.get("/me/library")).json()
 
     by_id = {g["appid"]: g for g in body["games"]}
-    assert by_id[440]["genres"] == ["Action", "Free To Play"] and by_id[440]["metadataStatus"] == "SUCCESS"
+    assert by_id[440]["genres"] == ["액션", "무료 플레이"] and by_id[440]["metadataStatus"] == "SUCCESS"
     assert by_id[570]["metadataStatus"] == "PENDING" and by_id[570]["genres"] == []
     assert by_id[400]["appType"] == "music"
     assert body["metadataCoverage"] == {

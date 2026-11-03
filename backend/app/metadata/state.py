@@ -40,6 +40,7 @@ def apply_result(
         return {
             "name": data.name or None,
             "app_type": data.type or None,
+            "header_image": data.header_image or None,
             "genres_json": [g.model_dump() for g in data.genres],
             "categories_json": [c.model_dump() for c in data.categories],
             "dlc_appids_json": list(data.dlc),

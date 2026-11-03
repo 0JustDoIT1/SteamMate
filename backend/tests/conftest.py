@@ -90,7 +90,7 @@ async def db_sessionmaker(migrated_db) -> AsyncIterator:
 
     engine = create_async_engine(migrated_db)
     async with engine.begin() as conn:
-        await conn.execute(text("TRUNCATE game_metadata"))
+        await conn.execute(text("TRUNCATE game_metadata, chart_snapshot, chart_entry"))
     yield async_sessionmaker(engine, expire_on_commit=False)
     await engine.dispose()
 

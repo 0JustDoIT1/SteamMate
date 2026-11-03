@@ -40,6 +40,7 @@ class Category(_Loose):
 class AppData(_Loose):
     name: str = ""
     type: str = ""
+    header_image: str = ""
     genres: list[Genre] = []
     categories: list[Category] = []
     dlc: list[int] = []

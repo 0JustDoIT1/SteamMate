@@ -6,9 +6,11 @@
 from datetime import UTC, datetime
 
 from app.errors import AppError, ErrorCode
+from app.genre_labels import korean_genres
 from app.metadata.coverage import MetadataCoverage, compute_coverage, snapshot_at
-from app.metadata.service import MetadataLookup, MetadataSnapshot
+from app.metadata.service import MetadataLookup, MetadataSnapshot, Priority
 from app.models import FetchStatus
+from app.owned_cache import OwnedGamesCache
 from app.schemas import CamelModel
 from app.steam.web_api import PUBLIC_VISIBILITY, OwnedGame, SteamWebApi
 
@@ -45,13 +47,15 @@ class LibraryResponse(CamelModel):
     fetched_at: datetime
 
 
-async def fetch_library(api: SteamWebApi, metadata: MetadataLookup, steam_id: str) -> LibraryResponse:
-    body = await api.get_owned_games(steam_id)
+async def fetch_library(
+    api: SteamWebApi, metadata: MetadataLookup, owned_cache: OwnedGamesCache, steam_id: str
+) -> LibraryResponse:
+    body = await owned_cache.get(api, steam_id)
     if body.games is None and body.game_count is None:
         await _raise_private_reason(api, steam_id)
 
     owned = body.games or []
-    snapshots = await metadata.lookup(g.appid for g in owned)
+    snapshots = await metadata.lookup((g.appid for g in owned), Priority.HIGH)
     games = sorted(
         (_to_library_game(g, snapshots.get(g.appid)) for g in owned),
         key=lambda g: (-g.playtime_forever, g.appid),
@@ -88,7 +92,7 @@ def _to_library_game(game: OwnedGame, meta: MetadataSnapshot | None) -> LibraryG
         icon_url=ICON_URL.format(appid=game.appid, hash=game.img_icon_url) if game.img_icon_url else None,
         metadata_status=meta.status if meta else FetchStatus.PENDING,
         app_type=meta.app_type if meta else None,
-        genres=list(meta.genres) if meta and meta.status is FetchStatus.SUCCESS else [],
+        genres=korean_genres(meta.genres) if meta and meta.status is FetchStatus.SUCCESS else [],
     )
 
 

@@ -2,9 +2,10 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends
 
-from app.deps import current_steam_id, get_metadata, get_steam_api
+from app.deps import current_steam_id, get_metadata, get_owned_cache, get_steam_api
 from app.library import LibraryResponse, fetch_library
 from app.metadata.service import MetadataLookup
+from app.owned_cache import OwnedGamesCache
 from app.steam.web_api import SteamWebApi
 
 # 로그인한 본인 데이터만 다룬다. 경로·쿼리로 steamId를 받지 않는다.
@@ -16,5 +17,6 @@ async def my_library(
     steam_id: Annotated[str, Depends(current_steam_id)],
     api: Annotated[SteamWebApi, Depends(get_steam_api)],
     metadata: Annotated[MetadataLookup, Depends(get_metadata)],
+    owned_cache: Annotated[OwnedGamesCache, Depends(get_owned_cache)],
 ) -> LibraryResponse:
-    return await fetch_library(api, metadata, steam_id)
+    return await fetch_library(api, metadata, owned_cache, steam_id)

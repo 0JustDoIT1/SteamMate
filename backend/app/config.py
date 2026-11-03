@@ -38,6 +38,18 @@ class Settings(BaseSettings):
     metadata_retry_not_found_seconds: int = 60 * 60
     metadata_pending_stale_seconds: int = 10 * 60
 
+    # 대시보드 차트 수집 — 임시값(DEVLOG 3b 참조)
+    collector_enabled: bool = True
+    collector_run_interval_seconds: int = 3600
+    chart_concurrent_interval_seconds: int = 3600
+    chart_featured_interval_seconds: int = 6 * 3600
+    chart_weekly_interval_seconds: int = 6 * 3600
+    chart_retention_days: int = 14
+    # 판매 순위는 월간·연간 집계를 위해 1년+1주 보관(집계 주 기준)
+    chart_weekly_retention_weeks: int = 53
+    # 보유 게임 목록 메모리 캐시(저장하지 않음)
+    owned_cache_ttl_seconds: int = 300
+
     @property
     def cookie_secure(self) -> bool:
         return self.app_env not in ("local", "test")

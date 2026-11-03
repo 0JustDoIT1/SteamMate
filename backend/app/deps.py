@@ -6,8 +6,10 @@ from fastapi import Request
 from app.auth.session import COOKIE_NAME, SessionManager
 from app.auth.steam_openid import NonceStore
 from app.config import get_settings
+from app.dashboard import DashboardService
 from app.errors import AppError, ErrorCode
 from app.metadata.service import MetadataLookup
+from app.owned_cache import OwnedGamesCache
 from app.steam.web_api import SteamWebApi
 
 
@@ -25,6 +27,14 @@ def get_nonces(request: Request) -> NonceStore:
 
 def get_metadata(request: Request) -> MetadataLookup:
     return request.app.state.metadata
+
+
+def get_owned_cache(request: Request) -> OwnedGamesCache:
+    return request.app.state.owned
+
+
+def get_dashboard(request: Request) -> DashboardService:
+    return request.app.state.dashboard
 
 
 def get_steam_api(request: Request) -> SteamWebApi:
