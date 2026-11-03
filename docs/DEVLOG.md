@@ -15,8 +15,8 @@
 | 3a | 메타데이터 캐시(game_metadata, 레이트리미터) | ✅ 완료 |
 | 3b | 소스 스파이크 → 인기 대시보드 | ✅ 완료 (브라우저 확인, 커밋) |
 | 4 | 라이브러리 분석 + 보유 게임 추천·이유 | ✅ 완료 (화면 확인) |
-| 5 | 가격·할인(위시리스트·DLC·미보유 추천) | ⏭ 다음 |
-| 6 | 뉴스 조회·정제 (R1 완료) | 대기 |
+| 5 | 가격·할인(위시리스트·DLC·미보유 추천) | ✅ 완료 (화면 확인) |
+| 6 | 뉴스 조회·정제 (R1 완료) | ⏭ 다음 |
 | 7 | Full Context vs RAG 실험 | 대기 (LLM 제공자 결정 필요) |
 | 8 | 뉴스 AI 질문 (R2 완료) | 대기 |
 | 9 | E2E·배포 | 대기 (배포 대상 결정 필요) |
@@ -393,6 +393,55 @@
 
 **검증**: pytest 181 passed(추천 순수 함수 10개: 점수·이유 정확값, 미플레이 우선, 최근 장르, 동점, 제외·미확인 메타데이터, PLAYTIME_BASED, 입력 순서 무관 재현성, 후보 없음, 임계값 경계 / API 7개: 로그인, 정상 응답, 제외·저수집률, 잘못된 입력 422, 제외 목록 상한, 비공개, Steam 429), ruff·FE lint·typecheck·build 통과 [확인] / 실계정 화면 사용자 확인 [확인]
 
+### 5단계 — 가격·할인·살 만한 게임 (2026-11-03)
+
+**스파이크** [확인]
+| 확인 | 결과 |
+|---|---|
+| appdetails `filters=price_overview` 다중 appid | 50·100·200개 정상, 400개 HTTP 500 → 100개씩 묶음. 무료·미출시는 `data: []`, 없는 앱은 `success:false` |
+| 다중 appid + 다른 filters(basic·name·dlc) | 모두 HTTP 400 → DLC 이름은 할인 중인 것만 개별 조회 |
+| GetWishlist(사용자 본인 계정, 동의 후) | 키 없이 53개 조회, 비공개 전환 시 `{"response":{}}`, 개수 API도 동일 |
+| 저장된 DLC 목록 | 장르 받은 게임 175개에 DLC 1,878개(게임당 최대 201) |
+| 후보 풀 | 최신 목록 193개 → +최근 4주 판매 순위 227개(보유 제외 160) |
+
+**결정 (사용자 선택, PRD v6.3 반영)**
+| 항목 | 결정 |
+|---|---|
+| API | `/me/store-recommendations?onSaleOnly=` 분리, `/me/deals`는 위시리스트·DLC만 |
+| 살 만한 게임 점수 | `0.7·genreMatch + 0.3·popularity`(1/최고 순위). 할인은 점수 미반영 — 동점 정렬·표시·필터에만 |
+| 장르 수집 중(PLAYTIME_BASED) | 인기만으로, 이유에 안내(보유 게임 추천과 같은 모드 판정) |
+| 후보 | 소스별 최신 목록 + 최근 4주 판매 순위, 게임으로 확인되고 장르 있는 것만 |
+| DLC 범위 | 2시간 이상 플레이한 보유 게임의 DLC(처음 3시간으로 구현 → 사용자 요청으로 2시간), 본 게임당 최대 3개·전체 30개(실데이터에서 한 게임 DLC가 30개를 채워 추가) |
+
+**변경**
+- 마이그레이션 `d4e080ca6206`: `game_price((appid, cc) PK, …)` — 기존 `fetch_status` 타입 재사용(`create_type=False`)
+- `StoreApi.prices()`: 묶음 가격 조회, 요청 실패는 묶음 전체 같은 결과
+- `app/prices.py` `PriceService`: 요청 안에서 100개씩 받고 `max_batches`(기본 3)로 제한, 나머지 PENDING → 폴링이 이어 받음. 진행 중 appid 중복 조회 방지, 429면 남은 묶음 중단·일시정지. 일시 실패는 NOT_AVAILABLE이 되지 않고 기존 가격 유지. TTL 1시간
+- 메타데이터·가격이 상점 레이트리미터 하나를 공유(`build_store_limiter`)
+- 수집 작업: 차트 수집 후 후보 풀 가격을 미리 받음(제한 없음, 만료분만)
+- `chart_queries.candidate_pool()`: 최신 + 최근 4주 판매 순위, appid별 최고 순위(동순위는 판매 순위 먼저)
+- `SteamWebApi.get_wishlist()`: **API 키 없이** 호출(키 소유 계정의 비공개 우회 방지), 실패해도 추천·할인은 계속(`wishlistChecked`/`UNAVAILABLE`)
+- `app/store_recs.py`(순수 함수 `recommend_store`), `app/deals.py`(`dlc_sources`, `rank_deals`), `MetadataSnapshot.dlc_appids`
+- 프론트: "내 취향 추천" 탭(가진 게임 중 / 살 만한 게임 — 살 만한 게임은 처음 열 때 조회), 할인 중만 보기, 할인 영역(위시리스트·DLC, 비공개 안내, DLC 보유 미확인 안내), 가격·장르 수집 중 폴링
+
+**겪은 문제**
+- 가격 테스트 60초: 429 경우 레이트리미터가 실제로 60초 일시정지 → 테스트에서 일시정지 0.01초
+- 후보 풀 동순위 정렬이 "소스 이름 순"이라는 가정이 틀림(PostgreSQL enum은 정의 순) → 주석·테스트 수정
+- uvicorn `--reload` 멈춤 재현(2회째, 파일 변경 후 "Reloading..." 뒤 진행 없음). 원인 미확인 — 별도 조사 필요
+
+**검증**: pytest 210 passed(가격 캐시 8 · 살 만한 게임 13 · 할인 7 · 수집 작업 가격 선수집 1 추가), migration up/down·`alembic check`, ruff, FE lint·typecheck·build 통과 [확인]. 실데이터(사용자 계정, 동의 후 로컬 세션 발급): 후보 160 중 추천 10, 할인 중만 41, 위시리스트 할인 9/53, DLC 확인 440개 [확인] / 화면은 사용자 확인 대기
+
+**문구 수정 (사용자 피드백)**: 탭 "가진 게임 중 / 살 만한 게임" → "보유 게임 / 구매 추천", 체크박스는 재피드백("미플레이 / 할인 중"으로 짧게, 켜짐·꺼짐 구분이 잘 보이게)에 따라 토글 칩(`components/toggle-chip.tsx`, 켜짐 = 채운 배경 + ✓, 꺼짐 = 테두리 + "+", 뜻은 마우스 설명)으로 교체. PRD 화면 구성 문구도 새 탭 이름으로. FE lint·typecheck 통과 [확인]
+
+**미플레이 옵션 변경 (사용자 피드백)**: "켜도 꺼도 미플레이 게임이 이미 점수에 들어가 있어 무엇이 바뀌는지 모르겠다" → 가중치 상향(0.45/0.5/0.05)을 없애고 **포함/제외**로 변경. `preferUnplayed`(기본 false) → `includeUnplayed`(기본 true), 끄면 미플레이 게임을 후보에서 빼 "조금 해 본 게임"만 추천. 가중치는 항상 0.6/0.3/0.1. PRD v6.3 반영. pytest 211 passed, FE lint·typecheck 통과 [확인]
+
+**`/me` 탭 구성·이미지 (사용자 피드백)**
+- 대시보드처럼 상단 탭(보유 게임 추천 / 구매 추천 / 할인 / 장르 취향 / 보유 게임 목록 N)으로 한 섹션씩. 탭 막대는 `components/page-tabs.tsx`로 분리(대시보드는 기존 코드 유지). 구매 추천·할인은 처음 열 때 조회, 장르 차트는 보일 때만 그림(크기 0 경고 방지). 기존 "내 취향 추천" 안쪽 탭은 없앰
+- 보유 게임 목록 이미지 깨짐: 실계정 58개 중 3개(HELLDIVERS 2·Aimlabs·Battlefield 6) 아이콘 주소 404 [확인] → 라이브러리 응답에 상점 대표 이미지(`headerImage`, 메타데이터) 추가, `GameImage`가 대표 이미지 → 아이콘 → 대체 칸 순으로 시도
+- PRD `/me` 화면 구성 문구 갱신. pytest 211 passed, FE lint·typecheck·build 통과 [확인] / 화면은 사용자 확인 대기
+
+**미플레이 옵션 삭제 (사용자 결정)**: 포함/제외 칩도 불필요하다는 판단 → 칩·`includeUnplayed` API 옵션·응답 필드·브라우저 설정값 삭제. 미플레이 게임은 항상 후보(장르 수집 중만 제외). PRD F3 표·API 표·점수 설계 갱신. pytest 207 passed(옵션 관련 4개 삭제), FE lint·typecheck·build 통과 [확인]
+
 ---
 
 ## 미확인·추정 사항 (구현 시 검증)
@@ -407,9 +456,11 @@
 | 상점이 과다 요청 시 403을 주는지 | 운영 관찰 |
 | `success:false` 3건(378120, 482750, 623990)이 1시간 뒤 재확인에서 NOT_AVAILABLE로 확정되는지 | 3b 작업 중 확인 |
 | featuredcategories 스키마, GetMostPlayedGames 공개 접근 | 3b단계 스파이크 |
-| appdetails `filters=price_overview` 다중 appid 지원 | 5단계 |
-| IWishlistService/GetWishlist 공개 접근·응답 형식 (비문서화) | 5단계 |
-| GetOwnedGames로 DLC 보유 여부 판별 불가 | 5단계 |
+| ~~appdetails `filters=price_overview` 다중 appid 지원~~ | ✅ 5단계 스파이크: 200개 정상, 400개 HTTP 500. 다른 filters(basic 등)는 다중 불가(400) |
+| ~~IWishlistService/GetWishlist 공개 접근·응답 형식~~ | ✅ 키 없이 동작, `{items:[{appid,priority,date_added}]}`. 비공개 = `{"response":{}}` |
+| 공개인데 빈 위시리스트도 `{"response":{}}`인지(비공개와 구분 불가 추정) | 운영 관찰 — 화면은 "비었거나 비공개"로 함께 안내 |
+| API 키 소유 계정은 '게임 세부 정보' 비공개여도 GetOwnedGames 조회됨(추정: 키 소유자 권한) → 본인 계정으로 비공개 화면 재현 불가 | 다른 계정으로 확인 시 |
+| ~~GetOwnedGames로 DLC 보유 여부 판별 불가~~ | ✅ 판별 수단 없음 → "보유 여부 미확인" 표시 |
 | 비문서화 엔드포인트·차트 데이터 공개 서비스 이용 약관 | 출시 전 |
 
 ---
