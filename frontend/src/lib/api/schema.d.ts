@@ -160,6 +160,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/steam/news/{appid}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Game News */
+        get: operations["game_news_steam_news__appid__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/health": {
         parameters: {
             query?: never;
@@ -415,6 +432,44 @@ export interface components {
             total: number;
             /** Ratio */
             ratio: number;
+        };
+        /** NewsItem */
+        NewsItem: {
+            /** Gid */
+            gid: string;
+            /** Title */
+            title: string;
+            /** Author */
+            author: string | null;
+            /**
+             * Publishedat
+             * Format: date-time
+             */
+            publishedAt: string;
+            /** Excerpt */
+            excerpt: string;
+            /** Url */
+            url: string;
+            /** Externalurl */
+            externalUrl: string | null;
+        };
+        /** NewsResponse */
+        NewsResponse: {
+            /** Appid */
+            appid: number;
+            /** Name */
+            name: string | null;
+            /** Headerimage */
+            headerImage: string | null;
+            /** Items */
+            items: components["schemas"]["NewsItem"][];
+            /** Nextbefore */
+            nextBefore: number | null;
+            /**
+             * Fetchedat
+             * Format: date-time
+             */
+            fetchedAt: string;
         };
         /**
          * Period
@@ -771,6 +826,40 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DashboardResponse"];
+                };
+            };
+        };
+    };
+    game_news_steam_news__appid__get: {
+        parameters: {
+            query?: {
+                count?: number;
+                before?: number | null;
+            };
+            header?: never;
+            path: {
+                appid: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NewsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
