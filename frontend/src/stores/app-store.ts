@@ -16,6 +16,7 @@ type AppState = {
   setCc: (cc: string) => void;
   setRecOptions: (options: Partial<RecommendationOptions>) => void;
   toggleExcluded: (appid: number) => void;
+  clearExcluded: () => void;
   selectApp: (appid: number | null) => void;
 };
 
@@ -34,6 +35,7 @@ export const useAppStore = create<AppState>()(
             ? s.excludedAppids.filter((id) => id !== appid)
             : [...s.excludedAppids, appid].sort((a, b) => a - b),
         })),
+      clearExcluded: () => set({ excludedAppids: [] }),
       selectApp: (selectedAppid) => set({ selectedAppid }),
     }),
     {

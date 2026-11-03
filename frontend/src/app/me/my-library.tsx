@@ -1,11 +1,17 @@
 "use client";
 
+import { Bar, BarChart, XAxis, YAxis } from "recharts";
+
+import { type ChartConfig, ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart";
 import { STEAM_LOGIN_URL, useMe } from "@/features/auth/queries";
 import { type Library, useMyLibrary } from "@/features/library/queries";
 import { ApiError } from "@/lib/api/client";
 import { useHydrated } from "@/lib/use-hydrated";
 
+import MyRecommendations from "./my-recommendations";
+
 const PRIVACY_SETTINGS_URL = "https://steamcommunity.com/my/edit/settings";
+const GENRES_SHOWN = 10;
 
 function hours(minutes: number) {
   return minutes < 60 ? `${minutes}분` : `${(minutes / 60).toFixed(1)}시간`;
@@ -91,6 +97,9 @@ function LibraryView({ library }: { library: Library }) {
         ))}
       </dl>
 
+      {library.gameCount > 0 ? <MyRecommendations /> : null}
+      <GenreDistribution library={library} />
+
       {library.gameCount === 0 ? (
         <p className="text-zinc-500">보유한 게임이 없습니다.</p>
       ) : (
@@ -120,5 +129,51 @@ function LibraryView({ library }: { library: Library }) {
         Steam에서 조회합니다.
       </p>
     </div>
+  );
+}
+
+const genreConfig = { percent: { label: "취향 비중(%)", color: "var(--chart-1)" } } satisfies ChartConfig;
+
+function GenreDistribution({ library }: { library: Library }) {
+  const { metadataCoverage: c } = library;
+  const eligible = c.total - c.notAvailable;
+  const genres = library.genreDistribution
+    .slice(0, GENRES_SHOWN)
+    .map((g) => ({ genre: g.genre, percent: Math.round(g.share * 1000) / 10 }));
+
+  return (
+    <section className="rounded-lg border border-zinc-200 dark:border-zinc-800">
+      <header className="flex flex-wrap items-center justify-between gap-2 border-b border-zinc-200 px-4 py-3 dark:border-zinc-800">
+        <h2 className="font-semibold">내 장르 취향</h2>
+        <p className="text-xs text-zinc-500">
+          장르 정보 {c.success}/{eligible}개 ({Math.round(c.ratio * 100)}%)
+          {c.pending > 0 ? ` · ${c.pending}개 수집 중, 자동 갱신` : ""}
+          {c.temporaryError > 0 ? ` · ${c.temporaryError}개 일시 실패(나중에 재시도)` : ""}
+          {c.notAvailable > 0 ? ` · 장르 없음 ${c.notAvailable}개 제외` : ""}
+        </p>
+      </header>
+      <div className="px-4 py-3">
+        {genres.length === 0 ? (
+          <p className="text-sm text-zinc-500">
+            {c.pending > 0 ? "장르 정보를 모으는 중입니다…" : "플레이 기록이 있는 게임의 장르 정보가 없습니다."}
+          </p>
+        ) : (
+          <>
+            <ChartContainer config={genreConfig} className="aspect-auto w-full" style={{ height: genres.length * 28 + 16 }}>
+              <BarChart data={genres} layout="vertical" margin={{ left: 8, right: 24 }} barCategoryGap={6}>
+                <XAxis type="number" hide />
+                <YAxis type="category" dataKey="genre" width={120} tickLine={false} axisLine={false} />
+                <ChartTooltip cursor={false} content={<ChartTooltipContent hideIndicator />} />
+                <Bar dataKey="percent" fill="var(--color-percent)" radius={4} isAnimationActive={false} />
+              </BarChart>
+            </ChartContainer>
+            <p className="mt-2 text-xs text-zinc-500">
+              장르별 플레이 시간에 로그를 씌워 합한 비중입니다. 오래 한 게임 하나가 분포를 독차지하지 않게 하며, 추천의 &lsquo;취향
+              장르&rsquo;와 같은 값입니다.
+            </p>
+          </>
+        )}
+      </div>
+    </section>
   );
 }
