@@ -9,6 +9,8 @@
 > **v6.2 (2026-11-03, 사용자 승인)**: F3 점수 확정(미플레이 우선 가중치, 장르 수집 중 임시 추천은 미플레이 제외). F3·F4ⓒ를 "내 취향 추천" 한 영역의 탭으로 표시. F4ⓒ를 정가 게임까지 확대(할인 중만 보기 필터).
 >
 > **v6.3 (2026-11-03, 사용자 승인)**: F4 확정 — 미보유 추천 API 분리(`/me/store-recommendations`), 점수 `0.7·장르 + 0.3·인기`(할인은 점수 미반영), 후보 = 최신 목록 + 최근 4주 판매 순위, DLC 할인은 2시간 이상 플레이한 게임만(게임당 3개). 가격은 100개 묶음 조회. F3 미플레이 우선 옵션 삭제(미플레이 게임은 항상 후보).
+>
+> **v6.4 (2026-11-03, 사용자 승인)**: F6 R1 확정 — 공식 공지 피드만, 화면은 제목·발췌(200자)·원문 링크(전문 표시 보류), 링크만 있는 공지는 외부 원문 주소로 연결, 진입점은 보유 게임 목록.
 
 ---
 
@@ -59,7 +61,7 @@ NOT_AVAILABLE은 장르가 실제로 존재하지 않거나 대상이 상점 메
 | 게임 장르/카테고리/DLC | store appdetails를 appid 키로 PostgreSQL에 캐싱. 비문서화 엔드포인트의 이용 조건·실패·429·구조 변경에 대응 |
 | 게임 가격 | appdetails `filters=price_overview`(다중 appid 허용, 100개씩 묶음)를 (appid, cc) 키로 단기 TTL 캐싱. 한 요청에서 받는 묶음 수를 제한하고 나머지는 PENDING으로 응답(화면 폴링이 이어 받음) |
 | 인기·할인·신작 목록 | 주기 수집한 공개 집계 스냅샷을 일정 기간(기본 12주, 임시) 보관 후 삭제 |
-| 뉴스 본문 | GetNewsForApp; 요청/짧은 세션에서만 전처리·임시 인덱싱. 원문 및 임베딩 영구 보관 금지(MVP) |
+| 뉴스 본문 | GetNewsForApp; 요청/짧은 세션에서만 전처리·임시 인덱싱. 원문 및 임베딩 영구 보관 금지(MVP). R1 화면·캐시에는 정리한 발췌만(메모리 TTL 10분) |
 | 사용자 추천 | 요청 시 계산. metadataCoverage, recommendationMode, metadataSnapshotAt, calculatedAt 출력 |
 
 ## 추천 재현성 정책
@@ -83,7 +85,7 @@ metadataCoverage.ratio = SUCCESS / (SUCCESS + PENDING + TEMPORARY_ERROR) = succe
 ## 출시 게이트
 
 - Steam API 키와 세션 서명 비밀값은 서버에서만 관리한다.
-- Steam 뉴스 본문의 공개 AI 처리·저장·임베딩 권리는 미확정. 권리 확인 전 공개 RAG는 이용 허락된 자료로 제한하며 Steam 뉴스는 목록/원문 링크로 분리한다. 뉴스 AI 질문은 기능 플래그로 두고 **공개 배포 기본 OFF**.
+- Steam 뉴스 본문의 공개 AI 처리·저장·임베딩 권리는 미확정. 권리 확인 전 공개 RAG는 이용 허락된 자료로 제한하며 Steam 뉴스는 목록·발췌(앞부분 200자)·원문 링크로 분리한다(전문 표시는 이용 약관 확인 후 재검토). 뉴스 AI 질문은 기능 플래그로 두고 **공개 배포 기본 OFF**.
 - 비문서화 store 엔드포인트(appdetails, featuredcategories)·위시리스트·차트 데이터를 공개 서비스에서 사용하는 것도 출시 전 Steam 약관 검토 대상이다.
 - 요청당 토큰·비용 상한과 타임아웃·API 제한을 적용한다.
 
@@ -157,7 +159,7 @@ Browser ─ Next.js (App Router, client: TanStack Query + Zustand)
 5. 대시보드는 소스별 `snapshotAt`과 이전 스냅샷 대비 순위 변화를 표시한다. 로그인 상태면 세션 steamId로 개인화한다.
 
 ### 4. 업데이트 AI
-1. 게임별 뉴스 API를 요청 시 호출, 컨텐츠 BBCode/HTML 정제 및 태그·URL 검증.
+1. 게임별 뉴스 API를 요청 시 호출, 컨텐츠 BBCode/HTML 정제 및 태그·URL 검증. 공식 공지 피드(`steam_community_announcements`)만 받고, `maxlength`는 쓰지 않는다(Steam이 서식을 지우며 문단을 붙임). 원문 링크는 appid·gid로 만든 상점 공지 주소, 본문이 외부 링크뿐인 공지는 그 주소(`externalUrl`)로 연결한다.
 2. 총 입력 토큰에 따라 Full Context 또는 In-Memory RAG 중 사전 실험으로 정한 모드를 사용. 토큰 초과 시 안전하게 검색 모드로 전환.
 3. 질문 범위/날짜 필터 적용, 근거 없는 경우 답변 불가 알림, 원문 링크 출력.
 4. 뉴스 전문·임베딩은 영구 DB에 적재하지 않음. 요청·임시 TTL 캐시 사용 후 만료 삭제. TTL은 법적 이용 허가를 대신하지 않음.
@@ -219,7 +221,7 @@ Browser ─ Next.js (App Router, client: TanStack Query + Zustand)
 | GET | `/me/store-recommendations?onSaleOnly=` | 필수 | 미보유 게임 TOP10 + reasons·가격·`wishlisted`, `candidatePoolSize`, `candidateCount`, `metadataPending`, `pricePending`, 모드, `poolSnapshotAt`, `priceSnapshotAt`. 수집 전 `DATA_NOT_READY` |
 | GET | `/me/deals` | 필수 | `wishlistDeals`, `wishlistStatus`(OK·EMPTY_OR_PRIVATE·UNAVAILABLE), `dlcDeals`, `dlcBaseGameCount`, `dlcCheckedCount`, `pricePending`, `priceSnapshotAt` |
 | GET | `/steam/dashboard?cc=kr` | 선택 | 섹션별 `{source, snapshotAt, entries[]}`, 장르 분포. 로그인 시 개인화 |
-| GET | `/steam/news/{appid}` | — | 뉴스 목록·원문 링크 |
+| GET | `/steam/news/{appid}?count=1~20&before=` | — | 공식 공지 `{appid, name, headerImage, items[{gid, title, author, publishedAt, excerpt, url, externalUrl}], nextBefore}`. 없는 게임 `NOT_FOUND` |
 | POST | `/steam/news/ask` | — | `{appid, question, dateRange?}` → 답변·근거·출처·모드 |
 
 추천 응답 예:
