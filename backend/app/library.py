@@ -6,13 +6,14 @@
 from datetime import UTC, datetime
 
 from app.errors import AppError, ErrorCode
-from app.genre_labels import korean_genres
+from app.genre_labels import korean_genre, korean_genres
 from app.metadata.coverage import MetadataCoverage, compute_coverage, snapshot_at
 from app.metadata.service import MetadataLookup, MetadataSnapshot, Priority
 from app.models import FetchStatus
 from app.owned_cache import OwnedGamesCache
 from app.schemas import CamelModel
 from app.steam.web_api import PUBLIC_VISIBILITY, OwnedGame, SteamWebApi
+from app.taste import genre_preference
 
 ICON_URL = "https://media.steampowered.com/steamcommunity/public/images/apps/{appid}/{hash}.jpg"
 PRIVACY_SETTINGS_URL = "https://steamcommunity.com/my/edit/settings"
@@ -37,24 +38,42 @@ class LibrarySummary(CamelModel):
     recently_played_count: int
 
 
+class GenreShare(CamelModel):
+    genre: str
+    # 취향 가중치(장르별 Σ log1p(플레이 분), 합 1) — 추천의 장르 매칭과 같은 값
+    share: float
+
+
 class LibraryResponse(CamelModel):
     steam_id: str
     game_count: int
     games: list[LibraryGame]
     summary: LibrarySummary
+    genre_distribution: list[GenreShare]
     metadata_coverage: MetadataCoverage
     metadata_snapshot_at: datetime | None
     fetched_at: datetime
 
 
-async def fetch_library(
-    api: SteamWebApi, metadata: MetadataLookup, owned_cache: OwnedGamesCache, steam_id: str
-) -> LibraryResponse:
+async def load_owned_games(api: SteamWebApi, owned_cache: OwnedGamesCache, steam_id: str) -> list[OwnedGame]:
+    """본인 보유 게임. 비어 있는 응답은 비공개 사유를 판별해 오류로 바꾼다(라이브러리·추천 공용)."""
     body = await owned_cache.get(api, steam_id)
     if body.games is None and body.game_count is None:
         await _raise_private_reason(api, steam_id)
+    return body.games or []
 
-    owned = body.games or []
+
+def genre_distribution(owned: list[OwnedGame], snapshots: dict[int, MetadataSnapshot]) -> list[GenreShare]:
+    genres_by_appid = {a: s.genres for a, s in snapshots.items() if s.status is FetchStatus.SUCCESS}
+    preference = genre_preference(((g.appid, g.playtime_forever) for g in owned), genres_by_appid)
+    ranked = sorted(preference.items(), key=lambda kv: (-kv[1], kv[0]))
+    return [GenreShare(genre=korean_genre(g), share=round(w, 4)) for g, w in ranked]
+
+
+async def fetch_library(
+    api: SteamWebApi, metadata: MetadataLookup, owned_cache: OwnedGamesCache, steam_id: str
+) -> LibraryResponse:
+    owned = await load_owned_games(api, owned_cache, steam_id)
     snapshots = await metadata.lookup((g.appid for g in owned), Priority.HIGH)
     games = sorted(
         (_to_library_game(g, snapshots.get(g.appid)) for g in owned),
@@ -65,6 +84,7 @@ async def fetch_library(
         game_count=len(games),
         games=games,
         summary=summarize(games),
+        genre_distribution=genre_distribution(owned, snapshots),
         metadata_coverage=compute_coverage((g.appid for g in owned), snapshots),
         metadata_snapshot_at=snapshot_at(snapshots.values()),
         fetched_at=datetime.now(UTC),

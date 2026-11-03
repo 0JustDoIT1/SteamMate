@@ -49,6 +49,8 @@ class Settings(BaseSettings):
     chart_weekly_retention_weeks: int = 53
     # 보유 게임 목록 메모리 캐시(저장하지 않음)
     owned_cache_ttl_seconds: int = 300
+    # 장르 수집률이 이 값 이상이면 GENRE_AWARE, 미만이면 PLAYTIME_BASED — PRD 임시 가정 90%
+    recommendation_genre_threshold: float = 0.9
 
     @property
     def cookie_secure(self) -> bool:

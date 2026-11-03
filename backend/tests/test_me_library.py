@@ -148,6 +148,8 @@ async def test_library_includes_genres_and_coverage(client, login, steam_handler
     }
     assert body["metadataSnapshotAt"].startswith("2026-11-02")
     assert sorted(fake_metadata.requested[0]) == [400, 440, 570, 620]
+    # 장르를 아는 게임은 440 하나 → 두 장르가 반씩(동점은 영어 장르명 순)
+    assert body["genreDistribution"] == [{"genre": "액션", "share": 0.5}, {"genre": "무료 플레이", "share": 0.5}]
 
 
 async def test_no_steam_id_parameter_accepted(client, login, steam_handler):
