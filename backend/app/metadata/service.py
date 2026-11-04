@@ -81,6 +81,10 @@ class MetadataService:
         self._seq = itertools.count()
         self._queued: dict[int, Priority] = {}  # 대기 중(아직 시작 안 함)인 게임과 그 우선순위
         self._started: set[int] = set()  # 처리 중인 게임
+        # 처리를 마친 순번. lookup이 DB를 읽기 시작한 뒤에 처리가 끝난 게임은 읽은 행이 옛 상태라
+        # 다시 넣지 않는다(동시 lookup의 중복 요청 방지). 게임 수만큼만 커진다.
+        self._finished = 0
+        self._finished_at: dict[int, int] = {}
         self._workers: list[asyncio.Task[None]] = []
 
     def start(self) -> None:
@@ -104,12 +108,13 @@ class MetadataService:
         if not ids:
             return {}
         now = self._now()
+        read_from = self._finished
         async with self._sessionmaker()() as session:
             rows = {
                 row.appid: row
                 for row in (await session.scalars(select(GameMetadata).where(GameMetadata.appid.in_(ids))))
             }
-            to_queue = [a for a in ids if self._should_queue(a, rows.get(a), now, priority)]
+            to_queue = [a for a in ids if self._should_queue(a, rows.get(a), now, priority, read_from)]
             new_ids = [a for a in to_queue if a not in rows]
             if new_ids:
                 # 처음 보는 게임은 PENDING 행을 만든다. 다른 요청이 먼저 넣었으면 건드리지 않는다.
@@ -131,27 +136,41 @@ class MetadataService:
         for appid in new_ids:
             snapshots[appid] = MetadataSnapshot(appid=appid, status=FetchStatus.PENDING)
         for appid in to_queue:
+            # 판단 후 DB 저장을 기다리는 사이 다른 lookup이 넣었거나 처리했을 수 있다.
+            # 여기서부터 put까지는 await가 없어 다시 확인한 결과가 그대로 유지된다.
+            # DB 행은 다시 보지 않는다(위에서 stale PENDING의 last_checked_at을 이미 갱신했다).
+            if self._memory_decision(appid, priority, read_from) is False:
+                continue
             self._queued[appid] = priority
             self._queue.put_nowait((priority, next(self._seq), appid))
         return snapshots
 
-    def _should_queue(self, appid: int, row: GameMetadata | None, now: datetime, priority: Priority) -> bool:
-        if appid in self._started:
+    def _should_queue(
+        self, appid: int, row: GameMetadata | None, now: datetime, priority: Priority, read_from: int
+    ) -> bool:
+        decided = self._memory_decision(appid, priority, read_from)
+        return _row_is_due(row, now, self._policy) if decided is None else decided
+
+    def _memory_decision(self, appid: int, priority: Priority, read_from: int) -> bool | None:
+        """처리 중·대기 중·방금 처리됨 상태로 정해지면 True/False, DB 행을 봐야 하면 None."""
+        if appid in self._started or self._finished_at.get(appid, -1) > read_from:
             return False
         queued = self._queued.get(appid)
         if queued is not None:
             # 이미 대기 중이면 더 높은 우선순위 요청일 때만 다시 넣는다(앞당기기).
             return priority < queued
-        return _row_is_due(row, now, self._policy)
+        return None
 
     async def _worker(self) -> None:
         while True:
             priority, _, appid = await self._queue.get()
+            started = False
             try:
                 if self._queued.get(appid) != priority:
                     continue  # 우선순위가 올라가 다시 들어간 항목의 옛 사본
                 del self._queued[appid]
                 self._started.add(appid)
+                started = True
                 await self._refresh(appid)
             except asyncio.CancelledError:
                 raise
@@ -159,7 +178,10 @@ class MetadataService:
                 # 한 게임의 실패가 워커를 멈추지 않게 한다. 행은 PENDING으로 남아 stale 복구 대상이 된다.
                 logger.exception("metadata refresh failed: appid=%s", appid)
             finally:
-                self._started.discard(appid)
+                if started:  # 옛 사본은 다른 작업자가 처리 중인 표시를 지우면 안 된다
+                    self._started.discard(appid)
+                    self._finished += 1
+                    self._finished_at[appid] = self._finished
                 self._queue.task_done()
 
     async def _refresh(self, appid: int) -> None:
