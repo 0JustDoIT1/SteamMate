@@ -223,7 +223,7 @@ QUESTIONS: list[Question] = [
     Question("Q03", "single", "2.4.0의 수확 축제 이벤트는 언제 끝나나요?",
              (("11월 3일", "2025-11-03", "11/3", "November 3"),), ("C3",)),
     Question("Q04", "single", "2.3.0 핫픽스에서 고친 Glass Canyon 스폰 악용 문제는 어느 위치 근처였나요?",
-             (("north bridge", "북쪽 다리"),), ("C2",)),
+             (("north bridge", "북쪽 다리", "북쪽 브리지", "북 브리지"),), ("C2",)),
     Question("Q05", "single", "2.4.1 패치노트의 알려진 문제에서 Echo Station에는 어떤 문제가 있나요?",
              (("flicker", "깜빡"),), ("C4",)),
     Question("Q06", "single", "2.5.0에서 추가된 새 모드의 이름은 무엇인가요?", _a("Relic Hunt"), ("C5",)),

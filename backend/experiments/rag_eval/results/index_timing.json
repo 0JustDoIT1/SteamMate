@@ -1,0 +1,22 @@
+{
+ "2k": {
+  "chunks": 10,
+  "chars": 7371,
+  "seconds_median": 0.138
+ },
+ "8k": {
+  "chunks": 34,
+  "chars": 32619,
+  "seconds_median": 0.417
+ },
+ "32k": {
+  "chunks": 134,
+  "chars": 132643,
+  "seconds_median": 1.8
+ },
+ "100k": {
+  "chunks": 396,
+  "chars": 388427,
+  "seconds_median": 5.322
+ }
+}

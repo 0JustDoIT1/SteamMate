@@ -16,6 +16,7 @@ from experiments.rag_eval.dataset import (
     QUESTIONS,
     SEED,
     TARGETS,
+    Docs,
     build_docs,
     select_corpora,
 )
@@ -45,12 +46,28 @@ def ollama_counter(client: httpx.Client, model: str):
     return lambda text: raw_count(text) - overhead
 
 
+def _questions(docs: Docs) -> list[dict]:
+    return [
+        {"id": q.id, "kind": q.kind, "text": q.text, "answer": [list(a) for a in q.answer],
+         "evidence": [docs.core_ids[k] for k in q.evidence]}
+        for q in QUESTIONS
+    ]
+
+
 def main() -> None:
     p = argparse.ArgumentParser()
     p.add_argument("--model", default="bonsai-2:9b")
+    p.add_argument("--questions-only", action="store_true",
+                   help="문서·구간은 그대로 두고 질문(정답 허용 표기 등)만 다시 쓴다. 토큰을 다시 세지 않는다.")
     args = p.parse_args()
 
     docs = build_docs()
+    if args.questions_only:
+        out = json.loads(OUT.read_text(encoding="utf-8"))
+        out["questions"] = _questions(docs)
+        OUT.write_text(json.dumps(out, ensure_ascii=False, indent=1) + "\n", encoding="utf-8")
+        print(f"questions rewritten in {OUT}")
+        return
     with httpx.Client(base_url=OLLAMA, timeout=600) as client:
         version = client.get("/api/version").json()["version"]
         selections = select_corpora(docs, ollama_counter(client, args.model))
@@ -80,11 +97,7 @@ def main() -> None:
              "text": d.text}
             for d in docs.docs if d.id in used
         ],
-        "questions": [
-            {"id": q.id, "kind": q.kind, "text": q.text, "answer": [list(a) for a in q.answer],
-             "evidence": [docs.core_ids[k] for k in q.evidence]}
-            for q in QUESTIONS
-        ],
+        "questions": _questions(docs),
     }
     OUT.write_text(json.dumps(out, ensure_ascii=False, indent=1) + "\n", encoding="utf-8")
     for name, c in out["corpora"].items():
