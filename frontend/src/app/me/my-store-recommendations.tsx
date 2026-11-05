@@ -1,5 +1,7 @@
 "use client";
 
+import { ChartColumn, Crown, Gamepad2, Heart, Sparkles } from "lucide-react";
+
 import GameImage from "@/components/game-image";
 import ToggleChip from "@/components/toggle-chip";
 import { FACTOR_LABEL, MODE_LABEL } from "@/features/library/labels";
@@ -16,11 +18,12 @@ export default function StoreRecommendationsPanel() {
   const data = query.data;
 
   return (
-    <section className="rounded-lg border border-zinc-200 dark:border-zinc-800">
-      <header className="flex flex-wrap items-center justify-between gap-2 border-b border-zinc-200 px-4 py-3 dark:border-zinc-800">
-        <div className="flex items-baseline gap-2">
-          <h2 className="font-semibold">내 취향에 맞는 인기 게임</h2>
-          {data ? <span className="text-xs text-zinc-500">{MODE_LABEL[data.recommendationMode]}</span> : null}
+    <section className="panel">
+      <header className="flex flex-wrap items-center justify-between gap-2 px-5 pt-5">
+        <div className="flex items-center gap-2.5">
+          <Gamepad2 className="size-6 text-[#a68bff]" aria-hidden />
+          <h2 className="text-xl font-bold text-white">내 취향에 맞는 인기 게임</h2>
+          {data ? <span className="text-sm text-zinc-400">{MODE_LABEL[data.recommendationMode]}</span> : null}
         </div>
         <ToggleChip
           label="할인 중"
@@ -30,7 +33,7 @@ export default function StoreRecommendationsPanel() {
         />
       </header>
 
-      <div className="px-4 py-3">
+      <div className="px-5 py-4">
         {query.isPending ? (
           <p className="text-sm text-zinc-500">추천을 계산하는 중…</p>
         ) : query.isError ? (
@@ -40,7 +43,7 @@ export default function StoreRecommendationsPanel() {
             {onSaleOnly ? "지금 할인 중인 후보 게임이 없습니다. '할인 중'을 끄면 정가 게임도 보여 줍니다." : "추천할 게임이 없습니다."}
           </p>
         ) : (
-          <ol className={`divide-y divide-zinc-200 dark:divide-zinc-800 ${query.isPlaceholderData ? "opacity-60" : ""}`}>
+          <ol className={`space-y-2 ${query.isPlaceholderData ? "opacity-60" : ""}`}>
             {data!.recommendations.map((rec, i) => (
               <StoreRow key={rec.appid} rank={i + 1} rec={rec} />
             ))}
@@ -80,51 +83,78 @@ function StoreError({ error, onRetry }: { error: Error; onRetry: () => void }) {
 function StoreRow({ rank, rec }: { rank: number; rec: StoreRecommendation }) {
   const price = rec.price;
   return (
-    <li className="flex gap-3 py-3">
-      <span className="w-5 shrink-0 pt-1 text-right text-sm tabular-nums text-zinc-500">{rank}</span>
+    <li className="flex flex-wrap items-center gap-4 rounded-xl border border-zinc-800 bg-zinc-950/40 p-3 transition-colors hover:border-accent/50 md:flex-nowrap">
+      <span
+        className={`grid h-8 w-9 shrink-0 place-items-center rounded-lg text-sm font-bold tabular-nums ${
+          rank === 1 ? "bg-gradient-to-br from-accent to-accent-2 text-white" : "border border-accent/40 bg-accent/10 text-zinc-100"
+        }`}
+      >
+        {rank === 1 ? (
+          <span className="flex items-center gap-0.5">
+            <Crown className="size-3.5" aria-label="1위" />1
+          </span>
+        ) : (
+          rank
+        )}
+      </span>
       <a href={rec.storeUrl} target="_blank" rel="noopener noreferrer" className="shrink-0">
-        <GameImage src={rec.headerImage} className="aspect-[460/215] w-36 rounded" />
+        <GameImage src={rec.headerImage} className="aspect-[460/215] w-40 rounded-md" />
       </a>
-      <div className="min-w-0 flex-1 space-y-1">
-        <div className="flex items-baseline justify-between gap-2">
-          <a href={rec.storeUrl} target="_blank" rel="noopener noreferrer" className="truncate font-medium hover:underline">
-            {rec.name}
-          </a>
-          <span className="shrink-0 text-xs tabular-nums text-zinc-500">{Math.round(rec.score * 100)}점</span>
+      <div className="min-w-0 flex-1 space-y-2">
+        <a href={rec.storeUrl} target="_blank" rel="noopener noreferrer" className="block truncate text-lg font-bold text-white hover:underline">
+          {rec.name}
+        </a>
+        <div className="flex flex-wrap gap-1.5">
+          {rec.genres.slice(0, 4).map((g) => (
+            <span key={g} className="chip">
+              {g}
+            </span>
+          ))}
+          {rec.genres.length > 4 ? <span className="chip">+{rec.genres.length - 4}</span> : null}
+          {rec.wishlisted ? (
+            <span className="chip border-pink-400/50 text-pink-200">
+              <Heart className="mr-1 size-3" aria-hidden />
+              위시리스트
+            </span>
+          ) : null}
         </div>
-        <p className="truncate text-xs text-zinc-500">
-          {rec.genres.join(" · ")}
-          {rec.wishlisted ? <span className="ml-2 text-sky-600">위시리스트</span> : null}
-        </p>
-        <ul className="flex flex-wrap gap-x-4 gap-y-0.5 text-sm">
-          {rec.reasons.map((r) =>
-            r.factor === "LOW_GENRE_COVERAGE" ? (
-              <li key={r.factor} className="text-xs text-amber-700 dark:text-amber-400">
+      </div>
+      <ul className="w-full space-y-1.5 text-sm md:w-72 md:shrink-0">
+        {rec.reasons.map((r) => {
+          if (r.factor === "LOW_GENRE_COVERAGE") {
+            return (
+              <li key={r.factor} className="text-xs text-amber-300">
                 {r.detail}
               </li>
-            ) : (
-              <li key={r.factor}>
-                {FACTOR_LABEL[r.factor]}
-                {r.detail ? <span className="text-zinc-500"> · {r.detail}</span> : null}
-                <span className="ml-1 tabular-nums text-zinc-500">+{Math.round(r.contribution * 100)}</span>
-              </li>
-            ),
-          )}
-        </ul>
-      </div>
-      <div className="w-24 shrink-0 text-right text-sm">
+            );
+          }
+          const Icon = r.factor === "POPULAR" ? ChartColumn : Sparkles;
+          return (
+            <li key={r.factor} className="flex items-center gap-2">
+              <Icon className="size-4 shrink-0 text-[#a68bff]" aria-hidden />
+              <span className="shrink-0 font-semibold text-zinc-100">{FACTOR_LABEL[r.factor]}</span>
+              <span className="min-w-0 truncate text-zinc-400">{r.detail}</span>
+              <span className="ml-auto shrink-0 tabular-nums text-[#8fa6ff]">+{Math.round(r.contribution * 100)}</span>
+            </li>
+          );
+        })}
+      </ul>
+      <span className="w-16 shrink-0 border-zinc-800 text-center text-xl font-bold tabular-nums text-white md:border-l">
+        {Math.round(rec.score * 100)}점
+      </span>
+      <div className="w-28 shrink-0 text-right md:border-l md:border-zinc-800">
         {price ? (
           <>
             {price.discountPercent > 0 ? (
-              <>
-                <span className="rounded bg-emerald-600 px-1 text-xs font-medium text-white">-{price.discountPercent}%</span>
-                <p className="text-xs text-zinc-400 line-through">{formatPrice(price.initialPrice, price.currency)}</p>
-              </>
+              <div className="flex items-center justify-end gap-1.5">
+                <span className="rounded bg-emerald-500 px-1.5 text-xs font-bold text-white">-{price.discountPercent}%</span>
+                <span className="text-xs text-zinc-500 line-through">{formatPrice(price.initialPrice, price.currency)}</span>
+              </div>
             ) : null}
-            <p className="tabular-nums">{formatPrice(price.finalPrice, price.currency)}</p>
+            <p className="text-lg font-bold tabular-nums text-white">{formatPrice(price.finalPrice, price.currency)}</p>
           </>
         ) : (
-          <p className="text-xs text-zinc-500">가격 정보 없음</p>
+          <p className="text-sm text-zinc-400">가격 정보 없음</p>
         )}
       </div>
     </li>

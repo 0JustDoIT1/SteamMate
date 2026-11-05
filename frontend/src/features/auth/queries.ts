@@ -22,6 +22,17 @@ export function useMe() {
   });
 }
 
+/** 위쪽 바의 닉네임·프로필 사진. 로그인했을 때만 묻고, 실패해도 화면은 기본 표시로 둔다(재시도 안 함). */
+export function useMyProfile(enabled: boolean) {
+  return useQuery({
+    queryKey: ["me", "profile"],
+    queryFn: () => apiFetch<Schemas["ProfileResponse"]>("/me/profile"),
+    enabled,
+    staleTime: 10 * 60_000,
+    retry: false,
+  });
+}
+
 export function useLogout() {
   const queryClient = useQueryClient();
   return useMutation({

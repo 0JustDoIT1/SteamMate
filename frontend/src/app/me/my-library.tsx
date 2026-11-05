@@ -1,20 +1,21 @@
 "use client";
 
+import { CalendarDays, Clock, Gamepad, Gamepad2, Newspaper, Play, type LucideIcon } from "lucide-react";
 import Link from "next/link";
-import { useState } from "react";
+import type { ReactNode } from "react";
 import { Bar, BarChart, XAxis, YAxis } from "recharts";
 
 import GameImage from "@/components/game-image";
-import PageTabs from "@/components/page-tabs";
 import { type ChartConfig, ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart";
 import { STEAM_LOGIN_URL, useMe } from "@/features/auth/queries";
 import { type Library, useMyLibrary } from "@/features/library/queries";
 import { ApiError } from "@/lib/api/client";
 import { useHydrated } from "@/lib/use-hydrated";
 
-import MyDeals from "./my-deals";
-import OwnedRecommendations from "./my-recommendations";
-import StoreRecommendationsPanel from "./my-store-recommendations";
+/*
+ * 내 라이브러리 계열 화면(사이드바 메뉴마다 한 페이지)의 공용 부품.
+ * LibraryGate가 로그인·불러오기·비공개 안내를 맡고, 페이지는 라이브러리가 준비된 뒤의 내용만 그린다.
+ */
 
 const PRIVACY_SETTINGS_URL = "https://steamcommunity.com/my/edit/settings";
 const GENRES_SHOWN = 10;
@@ -23,7 +24,7 @@ function hours(minutes: number) {
   return minutes < 60 ? `${minutes}분` : `${(minutes / 60).toFixed(1)}시간`;
 }
 
-export default function MyLibrary() {
+export default function LibraryGate({ children }: { children: (library: Library) => ReactNode }) {
   const hydrated = useHydrated();
   const { data: me, isPending: mePending } = useMe();
   const library = useMyLibrary(Boolean(me));
@@ -34,7 +35,7 @@ export default function MyLibrary() {
     return (
       <div className="mt-6 space-y-3">
         <p>내 라이브러리를 보려면 Steam 로그인이 필요합니다.</p>
-        <a href={STEAM_LOGIN_URL} className="inline-block rounded-md bg-zinc-900 px-4 py-2 text-white dark:bg-zinc-100 dark:text-zinc-900">
+        <a href={STEAM_LOGIN_URL} className="btn-primary">
           Steam으로 로그인
         </a>
       </div>
@@ -44,7 +45,15 @@ export default function MyLibrary() {
   if (library.isPending) return <p className="mt-6 text-zinc-500">Steam에서 라이브러리를 불러오는 중…</p>;
   if (library.isError) return <LibraryError error={library.error} onRetry={() => library.refetch()} />;
 
-  return <LibraryView library={library.data} />;
+  return (
+    <div className="space-y-6">
+      {children(library.data)}
+      <p className="border-t border-zinc-800/70 pt-4 text-xs text-zinc-500">
+        조회 시각 {new Date(library.data.fetchedAt).toLocaleString("ko-KR")} · 라이브러리는 저장하지 않으며 요청할 때마다
+        Steam에서 조회합니다.
+      </p>
+    </div>
+  );
 }
 
 function LibraryError({ error, onRetry }: { error: Error; onRetry: () => void }) {
@@ -82,87 +91,56 @@ function LibraryError({ error, onRetry }: { error: Error; onRetry: () => void })
   );
 }
 
-type MeTab = "RECS" | "STORE" | "DEALS" | "GENRES" | "GAMES";
-
-function LibraryView({ library }: { library: Library }) {
+export function LibraryStats({ library }: { library: Library }) {
   const { summary } = library;
-  const [tab, setTab] = useState<MeTab>("RECS");
-  // 가격·후보를 조회하는 탭은 처음 열 때 불러온다. 연 뒤에는 유지하고 보이기만 바꾼다(스크롤·상태 보존).
-  const [opened, setOpened] = useState<Set<MeTab>>(() => new Set<MeTab>(["RECS"]));
-  const stats = [
-    ["보유 게임", `${library.gameCount}개`],
-    ["총 플레이", hours(summary.totalPlaytimeMinutes)],
-    ["플레이한 게임", `${summary.playedCount}개`],
-    ["미플레이", `${summary.unplayedCount}개`],
-    ["최근 2주 플레이", `${summary.recentlyPlayedCount}개`],
+  const stats: [string, string, LucideIcon][] = [
+    ["보유 게임", `${library.gameCount}개`, Gamepad2],
+    ["총 플레이", hours(summary.totalPlaytimeMinutes), Clock],
+    ["플레이한 게임", `${summary.playedCount}개`, Play],
+    ["미플레이", `${summary.unplayedCount}개`, Gamepad],
+    ["최근 2주 플레이", `${summary.recentlyPlayedCount}개`, CalendarDays],
   ];
-  const tabs: { id: MeTab; label: string }[] = [
-    { id: "RECS", label: "보유 게임 추천" },
-    { id: "STORE", label: "구매 추천" },
-    { id: "DEALS", label: "할인" },
-    { id: "GENRES", label: "장르 취향" },
-    { id: "GAMES", label: `보유 게임 목록 ${library.gameCount}` },
-  ];
-  const select = (t: MeTab) => {
-    setTab(t);
-    setOpened((prev) => (prev.has(t) ? prev : new Set(prev).add(t)));
-  };
-  const panel = (t: MeTab, node: React.ReactNode) => (
-    <div className={tab === t ? "" : "hidden"}>{opened.has(t) ? node : null}</div>
-  );
-
   return (
-    <div className="mt-6 space-y-6">
-      <dl className="grid grid-cols-2 gap-3 sm:grid-cols-5">
-        {stats.map(([label, value]) => (
-          <div key={label} className="rounded-md border border-zinc-200 p-3 dark:border-zinc-800">
-            <dt className="text-xs text-zinc-500">{label}</dt>
-            <dd className="mt-1 text-lg font-semibold">{value}</dd>
+    <dl className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+      {stats.map(([label, value, Icon], i) => (
+        <div
+          key={label}
+          className={`panel flex items-center gap-4 p-4 ${i % 2 === 1 ? "bg-[linear-gradient(135deg,rgb(76_52_160/0.45),rgb(20_25_56/0.8))]" : ""}`}
+        >
+          <span className="grid size-10 shrink-0 place-items-center rounded-xl border border-accent-2/30 bg-accent-2/10 text-[#8fa6ff]">
+            <Icon className="size-5" aria-hidden />
+          </span>
+          <div className="min-w-0">
+            <dt className="text-xs text-zinc-400">{label}</dt>
+            <dd className="mt-0.5 whitespace-nowrap text-xl font-bold text-white xl:text-2xl">{value}</dd>
           </div>
-        ))}
-      </dl>
-
-      {library.gameCount === 0 ? (
-        <p className="text-zinc-500">보유한 게임이 없습니다.</p>
-      ) : (
-        <div className="space-y-4">
-          <PageTabs label="내 라이브러리 섹션" tabs={tabs} current={tab} onSelect={select} />
-          {panel("RECS", <OwnedRecommendations />)}
-          {panel("STORE", <StoreRecommendationsPanel />)}
-          {panel("DEALS", <MyDeals />)}
-          {panel("GENRES", <GenreDistribution library={library} visible={tab === "GENRES"} />)}
-          {panel("GAMES", <GameList library={library} />)}
         </div>
-      )}
-      <p className="text-xs text-zinc-500">
-        조회 시각 {new Date(library.fetchedAt).toLocaleString("ko-KR")} · 라이브러리는 저장하지 않으며 요청할 때마다
-        Steam에서 조회합니다.
-      </p>
-    </div>
+      ))}
+    </dl>
   );
 }
 
-function GameList({ library }: { library: Library }) {
+export function GameList({ library }: { library: Library }) {
   return (
-    <section className="rounded-lg border border-zinc-200 dark:border-zinc-800">
-      <header className="border-b border-zinc-200 px-4 py-3 dark:border-zinc-800">
-        <h2 className="font-semibold">보유 게임 목록</h2>
+    <section className="panel">
+      <header className="flex items-center gap-2 border-b border-zinc-800 px-5 py-4">
+        <Gamepad2 className="size-5 text-[#a68bff]" aria-hidden />
+        <h2 className="text-lg font-semibold text-white">보유 게임 목록</h2>
+        <span className="text-xs text-zinc-500">{library.gameCount}개 · 뉴스 버튼으로 게임별 공식 공지를 봅니다</span>
       </header>
-      <ul className="divide-y divide-zinc-200 dark:divide-zinc-800">
+      <ul className="divide-y divide-zinc-800/80">
         {library.games.map((game) => (
-          <li key={game.appid} className="flex items-center gap-3 px-4 py-2">
-            <GameImage src={game.headerImage} fallbackSrc={game.iconUrl} className="aspect-[460/215] w-20 rounded" />
-            <span className="flex-1 truncate">{game.name}</span>
+          <li key={game.appid} className="flex items-center gap-4 px-5 py-2.5 hover:bg-white/[0.02]">
+            <GameImage src={game.headerImage} fallbackSrc={game.iconUrl} className="aspect-[460/215] w-24 rounded-md" />
+            <span className="flex-1 truncate font-medium text-zinc-100">{game.name}</span>
             {game.playtime2Weeks > 0 && (
               <span className="text-xs text-emerald-600">최근 {hours(game.playtime2Weeks)}</span>
             )}
             <span className="w-20 text-right text-sm tabular-nums text-zinc-600 dark:text-zinc-400">
               {game.playtimeForever > 0 ? hours(game.playtimeForever) : "미플레이"}
             </span>
-            <Link
-              href={`/news/${game.appid}`}
-              className="shrink-0 rounded-md border border-zinc-300 px-2 py-0.5 text-xs text-zinc-600 hover:border-zinc-500 dark:border-zinc-700 dark:text-zinc-400"
-            >
+            <Link href={`/news/${game.appid}`} className="btn-ghost shrink-0 px-3 py-1 text-xs">
+              <Newspaper className="size-3.5" aria-hidden />
               뉴스
             </Link>
           </li>
@@ -174,7 +152,7 @@ function GameList({ library }: { library: Library }) {
 
 const genreConfig = { percent: { label: "취향 비중(%)", color: "var(--chart-1)" } } satisfies ChartConfig;
 
-function GenreDistribution({ library, visible }: { library: Library; visible: boolean }) {
+export function GenreDistribution({ library }: { library: Library }) {
   const { metadataCoverage: c } = library;
   const eligible = c.total - c.notAvailable;
   const genres = library.genreDistribution
@@ -182,9 +160,9 @@ function GenreDistribution({ library, visible }: { library: Library; visible: bo
     .map((g) => ({ genre: g.genre, percent: Math.round(g.share * 1000) / 10 }));
 
   return (
-    <section className="rounded-lg border border-zinc-200 dark:border-zinc-800">
-      <header className="flex flex-wrap items-center justify-between gap-2 border-b border-zinc-200 px-4 py-3 dark:border-zinc-800">
-        <h2 className="font-semibold">내 장르 취향</h2>
+    <section className="panel">
+      <header className="flex flex-wrap items-center justify-between gap-2 border-b border-zinc-800 px-5 py-4">
+        <h2 className="text-lg font-semibold text-white">내 장르 취향</h2>
         <p className="text-xs text-zinc-500">
           장르 정보 {c.success}/{eligible}개 ({Math.round(c.ratio * 100)}%)
           {c.pending > 0 ? ` · ${c.pending}개 수집 중, 자동 갱신` : ""}
@@ -197,8 +175,7 @@ function GenreDistribution({ library, visible }: { library: Library; visible: bo
           <p className="text-sm text-zinc-500">
             {c.pending > 0 ? "장르 정보를 모으는 중입니다…" : "플레이 기록이 있는 게임의 장르 정보가 없습니다."}
           </p>
-        ) : !visible ? null : (
-          // 숨긴 탭 안에서 그리면 차트 크기가 0이 되어 경고가 난다 → 보일 때만 그린다.
+        ) : (
           <>
             <ChartContainer config={genreConfig} className="aspect-auto w-full" style={{ height: genres.length * 28 + 16 }}>
               <BarChart data={genres} layout="vertical" margin={{ left: 8, right: 24 }} barCategoryGap={6}>

@@ -89,7 +89,7 @@ function DashboardBody({ data }: { data: Dashboard }) {
             onClick={() => setSelected(t)}
             className={`shrink-0 border-b-2 px-3 py-2 text-sm font-medium ${
               current === t
-                ? "border-zinc-900 text-zinc-900 dark:border-zinc-100 dark:text-zinc-100"
+                ? "border-accent font-semibold text-white"
                 : "border-transparent text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200"
             }`}
           >
@@ -132,8 +132,8 @@ function Panel({ section, visible }: { section: DashboardSection; visible: boole
   const total = Math.max(...views.map((v) => v.entries.length));
 
   return (
-    <section className="rounded-lg border border-zinc-200 dark:border-zinc-800">
-      <header className="flex flex-wrap items-center justify-between gap-2 border-b border-zinc-200 px-4 py-3 dark:border-zinc-800">
+    <section className="panel">
+      <header className="flex flex-wrap items-center justify-between gap-2 border-b border-zinc-800 px-5 py-4">
         <div className="flex items-center gap-3">
           <h2 className="sr-only">{meta.title}</h2>
           {views.length > 1 ? (
@@ -308,7 +308,7 @@ function Cells({ entry, section, aggregated, visible }: RowProps) {
         <>
           <span className="w-20">
             {entry.discountPercent ? (
-              <span className="rounded bg-emerald-600 px-1 text-white">-{entry.discountPercent}%</span>
+              <span className="rounded bg-emerald-500 px-1.5 text-white">-{entry.discountPercent}%</span>
             ) : null}
           </span>
           <span className="w-20">
@@ -346,9 +346,9 @@ function GenrePanel({ data }: { data: Dashboard }) {
   const { genres, basedOn, withGenres } = data.genreDistribution;
   if (genres.length === 0) return null;
   return (
-    <section className="rounded-lg border border-zinc-200 dark:border-zinc-800">
-      <header className="flex flex-wrap items-center justify-between gap-2 border-b border-zinc-200 px-4 py-3 dark:border-zinc-800">
-        <h2 className="font-semibold">이번 주 장르 순위</h2>
+    <section className="panel">
+      <header className="flex flex-wrap items-center justify-between gap-2 border-b border-zinc-800 px-5 py-4">
+        <h2 className="text-lg font-semibold text-white">이번 주 장르 순위</h2>
         <p className="text-xs text-zinc-500">
           판매 순위·주간 접속 순위 {basedOn}개 중 장르 정보가 있는 {withGenres}개 기준
         </p>

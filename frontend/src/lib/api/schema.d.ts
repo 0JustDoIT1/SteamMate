@@ -72,6 +72,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/me/profile": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * My Profile
+         * @description 위쪽 바의 닉네임·프로필 사진(공개 프로필 요약). 10분 메모리 캐시.
+         */
+        get: operations["my_profile_me_profile_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/me/library": {
         parameters: {
             query?: never;
@@ -605,6 +625,17 @@ export interface components {
             /** Discountpercent */
             discountPercent: number;
         };
+        /** ProfileResponse */
+        ProfileResponse: {
+            /** Steamid */
+            steamId: string;
+            /** Personaname */
+            personaName: string | null;
+            /** Avatarurl */
+            avatarUrl: string | null;
+            /** Profileurl */
+            profileUrl: string | null;
+        };
         /**
          * QaIntent
          * @enum {string}
@@ -784,6 +815,8 @@ export interface components {
         };
         /** ValueChangeDetail */
         ValueChangeDetail: {
+            /** Attribute */
+            attribute: string;
             /** Version */
             version: string;
             /** Date */
@@ -901,6 +934,26 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    my_profile_me_profile_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProfileResponse"];
+                };
             };
         };
     };

@@ -1,5 +1,7 @@
 "use client";
 
+import { ExternalLink, Gamepad2, Sparkles, ThumbsUp, X } from "lucide-react";
+
 import GameImage from "@/components/game-image";
 import { FACTOR_LABEL, MODE_LABEL } from "@/features/library/labels";
 import { type Recommendation, useMyRecommendations } from "@/features/library/queries";
@@ -20,15 +22,16 @@ export default function OwnedRecommendations() {
   const collecting = data?.recommendationMode === "PLAYTIME_BASED";
 
   return (
-    <section className="rounded-lg border border-zinc-200 dark:border-zinc-800">
-      <header className="flex flex-wrap items-center justify-between gap-2 border-b border-zinc-200 px-4 py-3 dark:border-zinc-800">
-        <div className="flex items-baseline gap-2">
-          <h2 className="font-semibold">{collecting ? "이어서 하기" : "다음에 할 게임"}</h2>
-          {data ? <span className="text-xs text-zinc-500">{MODE_LABEL[data.recommendationMode]}</span> : null}
+    <section className="panel">
+      <header className="flex flex-wrap items-center justify-between gap-2 px-5 pt-5">
+        <div className="flex items-center gap-2.5">
+          <Gamepad2 className="size-6 text-[#a68bff]" aria-hidden />
+          <h2 className="text-xl font-bold text-white">{collecting ? "이어서 하기" : "다음에 할 게임"}</h2>
+          {data ? <span className="text-sm text-zinc-400">{MODE_LABEL[data.recommendationMode]}</span> : null}
         </div>
       </header>
 
-      <div className="px-4 py-3">
+      <div className="px-5 py-4">
         {query.isPending ? (
           <p className="text-sm text-zinc-500">추천을 계산하는 중…</p>
         ) : query.isError ? (
@@ -45,7 +48,7 @@ export default function OwnedRecommendations() {
               : "추천할 게임이 없습니다. 보유 게임 중 2시간 미만으로 플레이한 게임이 후보입니다."}
           </p>
         ) : (
-          <ol className={`grid gap-3 sm:grid-cols-3 ${query.isPlaceholderData ? "opacity-60" : ""}`}>
+          <ol className={`grid gap-4 md:grid-cols-3 ${query.isPlaceholderData ? "opacity-60" : ""}`}>
             {data!.recommendations.map((rec, i) => (
               <RecommendationCard key={rec.appid} rank={i + 1} rec={rec} onExclude={() => toggleExcluded(rec.appid)} />
             ))}
@@ -53,7 +56,7 @@ export default function OwnedRecommendations() {
         )}
 
         {data ? (
-          <p className="mt-3 text-xs text-zinc-500">
+          <p className="mt-4 text-xs text-zinc-500">
             후보 {data.candidateCount}개 중 상위 {data.recommendations.length}개 · 장르 정보 {data.metadataCoverage.success}/
             {data.metadataCoverage.total - data.metadataCoverage.notAvailable}
             {data.metadataCoverage.pending > 0 ? ` (수집 중 ${data.metadataCoverage.pending}개)` : ""}
@@ -76,43 +79,59 @@ export default function OwnedRecommendations() {
 
 function RecommendationCard({ rank, rec, onExclude }: { rank: number; rec: Recommendation; onExclude: () => void }) {
   return (
-    <li className="flex flex-col overflow-hidden rounded-md border border-zinc-200 dark:border-zinc-800">
-      <a href={steamStoreUrl(rec.appid)} target="_blank" rel="noopener noreferrer">
+    <li className="flex flex-col overflow-hidden rounded-xl border border-zinc-800 bg-zinc-950/40 transition-colors hover:border-accent/50">
+      <a href={steamStoreUrl(rec.appid)} target="_blank" rel="noopener noreferrer" className="relative block">
         <GameImage src={rec.headerImage} className="aspect-[460/215] w-full" />
+        {/* 순위: 왼쪽 위 보라 모서리 */}
+        <span className="absolute left-0 top-0 grid size-10 place-items-start bg-gradient-to-br from-accent to-accent/0 pl-2.5 pt-1.5 text-sm font-bold text-white [clip-path:polygon(0_0,100%_0,0_100%)]">
+          {rank}
+        </span>
+        <span className="absolute right-2 top-2 flex items-center gap-1 rounded-lg bg-zinc-950/80 px-2 py-1 text-xs font-semibold tabular-nums text-white backdrop-blur">
+          <ThumbsUp className="size-3.5" aria-hidden />
+          {Math.round(rec.score * 100)}점
+        </span>
       </a>
-      <div className="flex flex-1 flex-col gap-2 p-3">
-        <div className="flex items-baseline justify-between gap-2">
-          <p className="truncate font-medium">
-            <span className="mr-1 text-zinc-500">{rank}.</span>
-            {rec.name}
-          </p>
-          <span className="shrink-0 text-xs tabular-nums text-zinc-500">{Math.round(rec.score * 100)}점</span>
+      <div className="flex flex-1 flex-col gap-3 p-4">
+        <p className="truncate text-lg font-bold text-white">{rec.name}</p>
+        {rec.genres.length > 0 ? (
+          <div className="flex flex-wrap gap-1.5">
+            {rec.genres.map((g) => (
+              <span key={g} className="chip">
+                {g}
+              </span>
+            ))}
+          </div>
+        ) : null}
+        <div className="flex gap-3 rounded-lg border border-zinc-800 bg-zinc-900/60 p-3">
+          <Sparkles className="mt-0.5 size-4 shrink-0 text-[#a68bff]" aria-hidden />
+          <ul className="min-w-0 flex-1 space-y-1.5 text-sm">
+            {rec.reasons.map((r) =>
+              r.factor === "LOW_GENRE_COVERAGE" ? (
+                <li key={r.factor} className="text-xs text-amber-300">
+                  {r.detail}
+                </li>
+              ) : (
+                <li key={r.factor} className="flex items-baseline justify-between gap-2">
+                  <span className="min-w-0 truncate">
+                    <span className="font-semibold text-zinc-100">{FACTOR_LABEL[r.factor]}</span>
+                    {r.detail ? <span className="ml-2 text-zinc-400">{r.detail}</span> : null}
+                  </span>
+                  <span className="shrink-0 font-semibold tabular-nums text-[#8fa6ff]">+{Math.round(r.contribution * 100)}</span>
+                </li>
+              ),
+            )}
+          </ul>
         </div>
-        {rec.genres.length > 0 ? <p className="truncate text-xs text-zinc-500">{rec.genres.join(" · ")}</p> : null}
-        <ul className="space-y-1 text-sm">
-          {rec.reasons.map((r) =>
-            r.factor === "LOW_GENRE_COVERAGE" ? (
-              <li key={r.factor} className="text-xs text-amber-700 dark:text-amber-400">
-                {r.detail}
-              </li>
-            ) : (
-              <li key={r.factor} className="flex justify-between gap-2">
-                <span className="truncate">
-                  {FACTOR_LABEL[r.factor]}
-                  {r.detail ? <span className="text-zinc-500"> · {r.detail}</span> : null}
-                </span>
-                <span className="shrink-0 tabular-nums text-zinc-500">+{Math.round(r.contribution * 100)}</span>
-              </li>
-            ),
-          )}
-        </ul>
-        <button
-          type="button"
-          onClick={onExclude}
-          className="mt-auto self-start text-xs text-zinc-500 underline hover:text-zinc-800 dark:hover:text-zinc-200"
-        >
-          추천에서 빼기
-        </button>
+        <div className="mt-auto flex gap-2 [&>*:first-child]:flex-1">
+          <a href={steamStoreUrl(rec.appid)} target="_blank" rel="noopener noreferrer" className="btn-primary">
+            게임 보기 (Steam)
+            <ExternalLink className="size-3.5" aria-hidden />
+          </a>
+          <button type="button" onClick={onExclude} className="btn-ghost">
+            <X className="size-4" aria-hidden />
+            추천에서 빼기
+          </button>
+        </div>
       </div>
     </li>
   );

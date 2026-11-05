@@ -26,8 +26,8 @@ export default function ToggleChip({
       onClick={() => onChange(!pressed)}
       className={`inline-flex items-center gap-1 rounded-full border px-3 py-1 text-sm transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
         pressed
-          ? "border-zinc-900 bg-zinc-900 text-white dark:border-zinc-100 dark:bg-zinc-100 dark:text-zinc-900"
-          : "border-zinc-300 text-zinc-600 hover:border-zinc-500 dark:border-zinc-700 dark:text-zinc-400"
+          ? "border-accent bg-accent/25 font-semibold text-white"
+          : "border-accent/50 text-zinc-200 hover:border-accent hover:bg-accent/10"
       }`}
     >
       <span aria-hidden className="w-3 text-center">

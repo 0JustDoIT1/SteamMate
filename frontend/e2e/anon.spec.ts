@@ -12,6 +12,14 @@ test("대시보드는 로그인 없이 보이고 로그인 버튼이 있다", as
   await expect(page.getByRole("link", { name: "Steam으로 로그인" })).toHaveAttribute("href", /\/api\/auth\/steam\/login/);
 });
 
+test("로그인 전에는 사이드바에 로그인이 필요 없는 메뉴만 보인다", async ({ page }) => {
+  await page.goto("/");
+  const nav = page.getByRole("list", { name: "주 메뉴" }).first();
+  await expect(nav.getByRole("link", { name: "인기 대시보드" })).toBeVisible();
+  await expect(nav.getByRole("link")).toHaveCount(1);
+  await expect(page.getByRole("link", { name: "로그인하고 시작하기" })).toHaveAttribute("href", /\/api\/auth\/steam\/login/);
+});
+
 test("Steam 로그인은 이 사이트로 돌아오는 OpenID 주소로 보낸다", async ({ request, baseURL }) => {
   const res = await request.get("/api/auth/steam/login", { maxRedirects: 0 });
   expect(res.status()).toBe(302);
@@ -21,9 +29,11 @@ test("Steam 로그인은 이 사이트로 돌아오는 OpenID 주소로 보낸�
   expect(location.searchParams.get("openid.realm")).toBe(baseURL);
 });
 
-test("로그인하지 않으면 내 라이브러리 대신 로그인 안내를 보인다", async ({ page }) => {
-  await page.goto("/me");
-  await expect(page.getByText("내 라이브러리를 보려면 Steam 로그인이 필요합니다.")).toBeVisible();
+test("로그인하지 않으면 내 라이브러리 계열 페이지는 로그인 안내를 보인다", async ({ page }) => {
+  for (const path of ["/me", "/me/store", "/me/deals", "/me/genres", "/news"]) {
+    await page.goto(path);
+    await expect(page.getByText("내 라이브러리를 보려면 Steam 로그인이 필요합니다.")).toBeVisible();
+  }
 });
 
 test("위조한 세션 쿠키는 로그인으로 인정하지 않는다", async ({ page, context, baseURL }) => {
@@ -35,7 +45,8 @@ test("위조한 세션 쿠키는 로그인으로 인정하지 않는다", async 
 
 test("게임 뉴스는 공식 공지 목록과 원문 링크를 보인다", async ({ page }) => {
   await page.goto(`/news/${TERRARIA}`);
-  await expect(page.getByRole("heading", { level: 1, name: "Terraria" })).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1, name: "공식 뉴스" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Terraria" })).toBeVisible(); // 게임 이름은 배너 아래 제목
   await expect(page.getByRole("heading", { name: "공식 공지" })).toBeVisible();
   // 공지마다 Steam(또는 외부) 원문으로 가는 링크
   const originals = page.getByRole("link", { name: /전문 보기/ });

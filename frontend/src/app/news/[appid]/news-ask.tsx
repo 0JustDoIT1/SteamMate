@@ -1,5 +1,7 @@
 "use client";
 
+import { Info, MessageCircleQuestion } from "lucide-react";
+
 import { useState } from "react";
 
 import { type AskResponse, useAskNews } from "@/features/news/queries";
@@ -27,7 +29,8 @@ function readableDate(s: string): string {
 export default function NewsAsk({ appid, enabled }: { appid: number; enabled: boolean }) {
   if (!enabled) {
     return (
-      <section className="rounded-lg border border-zinc-200 px-4 py-3 text-sm text-zinc-500 dark:border-zinc-800">
+      <section className="flex items-center gap-3 rounded-xl border border-accent/50 bg-accent/10 px-5 py-4 text-sm text-zinc-100">
+        <Info className="size-5 shrink-0 text-[#a68bff]" aria-hidden />
         이 환경에서는 공지 AI 질문을 제공하지 않습니다.
       </section>
     );
@@ -46,9 +49,12 @@ function AskForm({ appid }: { appid: number }) {
   }
 
   return (
-    <section className="rounded-lg border border-zinc-200 dark:border-zinc-800">
-      <header className="border-b border-zinc-200 px-4 py-3 dark:border-zinc-800">
-        <h2 className="font-semibold">공지에 질문하기</h2>
+    <section className="panel">
+      <header className="border-b border-zinc-800 px-5 py-4">
+        <h2 className="flex items-center gap-2 text-lg font-semibold text-white">
+          <MessageCircleQuestion className="size-5 text-[#a68bff]" aria-hidden />
+          공지에 질문하기
+        </h2>
         <p className="text-xs text-zinc-500">
           최근 공식 공지(최대 50건)를 근거로 AI가 답합니다. &ldquo;최신 업데이트&rdquo;는 제목에 버전·패치가 들어간 가장
           최근 공지를 기준으로 합니다. 틀릴 수 있으니 출처의 원문을 확인하세요.
@@ -59,7 +65,7 @@ function AskForm({ appid }: { appid: number }) {
           e.preventDefault();
           submit(trimmed);
         }}
-        className="space-y-3 px-4 py-4"
+        className="space-y-3 px-5 py-4"
       >
         <div className="flex flex-wrap gap-2">
           {QUESTION_TEMPLATES.map((t) => (
@@ -71,7 +77,7 @@ function AskForm({ appid }: { appid: number }) {
                 setQuestion(t);
                 submit(t);
               }}
-              className="rounded-full border border-zinc-300 px-3 py-1 text-xs text-zinc-700 hover:border-zinc-500 disabled:opacity-50 dark:border-zinc-700 dark:text-zinc-300"
+              className="rounded-full border border-accent/50 bg-accent/10 px-3 py-1 text-xs text-zinc-100 hover:border-accent hover:bg-accent/20 disabled:opacity-50"
             >
               {t}
             </button>
@@ -85,7 +91,7 @@ function AskForm({ appid }: { appid: number }) {
             maxLength={MAX_QUESTION}
             rows={2}
             placeholder="예: (아이템 이름) 피해량은 지금 얼마야?"
-            className="w-full resize-y rounded-md border border-zinc-300 bg-transparent px-3 py-2 text-sm dark:border-zinc-700"
+            className="w-full resize-y rounded-lg border border-zinc-700 bg-zinc-950/60 px-3 py-2 text-sm placeholder:text-zinc-500 focus:border-accent focus:outline-none"
           />
         </label>
         <div className="flex items-center gap-2 text-sm">
@@ -95,7 +101,7 @@ function AskForm({ appid }: { appid: number }) {
           <button
             type="submit"
             disabled={!trimmed || ask.isPending}
-            className="rounded-md bg-zinc-900 px-3 py-1.5 text-sm text-white disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900"
+            className="btn-primary"
           >
             {ask.isPending ? "답변 만드는 중…" : "질문"}
           </button>
@@ -103,11 +109,11 @@ function AskForm({ appid }: { appid: number }) {
       </form>
 
       {ask.isPending ? (
-        <p className="border-t border-zinc-200 px-4 py-3 text-sm text-zinc-500 dark:border-zinc-800">
+        <p className="border-t border-zinc-800 px-5 py-4 text-sm text-zinc-400">
           공지를 모아 답을 만드는 중입니다. 처음 질문하는 게임은 30초 이상 걸릴 수 있습니다.
         </p>
       ) : ask.isError ? (
-        <p role="alert" className="border-t border-zinc-200 px-4 py-3 text-sm text-red-700 dark:border-zinc-800 dark:text-red-300">
+        <p role="alert" className="border-t border-zinc-800 px-5 py-4 text-sm text-red-300">
           {ask.error.message}
         </p>
       ) : ask.data ? (
@@ -124,7 +130,7 @@ function Answer({ data }: { data: AskResponse }) {
   const latest = data.latestUpdate;
   const showLatest = latest !== null && latest !== undefined && !data.sources.some((s) => s.gid === latest.gid);
   return (
-    <div className="space-y-3 border-t border-zinc-200 px-4 py-4 dark:border-zinc-800">
+    <div className="space-y-3 border-t border-zinc-800 px-5 py-4">
       {data.refused ? (
         // 서버가 질문 유형에 맞춘 안내 문장을 준다(내부 판정 말 "근거 없음"은 보이지 않는다)
         <p className="text-sm text-zinc-500">{data.answer}</p>
@@ -237,8 +243,10 @@ function ValueView({ value }: { value: Value }) {
           <caption className="text-left font-medium text-zinc-500">변경 기록</caption>
           <tbody>
             {value.history.map((h) => (
-              <tr key={`${h.date}-${h.version}-${h.before}-${h.after}`} className="border-t border-zinc-100 dark:border-zinc-800">
+              <tr key={`${h.date}-${h.version}-${h.attribute}-${h.before}-${h.after}`} className="border-t border-zinc-100 dark:border-zinc-800">
                 <td className="py-1 pr-2">{h.version || "-"}</td>
+                {/* 공지에 적힌 수치 이름 원문 — 모델이 다른 수치(예: Knockback)를 옮겨도 알아볼 수 있게 */}
+                <td className="py-1 pr-2 font-medium text-zinc-200">{h.attribute || "-"}</td>
                 <td className="py-1 pr-2">{readableDate(h.date)}</td>
                 <td className="py-1">{h.before ? `${h.before} → ${h.after}` : `${h.after} (추가)`}</td>
               </tr>

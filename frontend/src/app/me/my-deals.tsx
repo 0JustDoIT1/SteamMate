@@ -1,5 +1,7 @@
 "use client";
 
+import { Tag } from "lucide-react";
+
 import GameImage from "@/components/game-image";
 import { type DealItem, type Deals, useMyDeals } from "@/features/library/queries";
 import { formatDateTime, formatPrice } from "@/lib/format";
@@ -12,9 +14,12 @@ export default function MyDeals() {
   const data = query.data;
 
   return (
-    <section className="rounded-lg border border-zinc-200 dark:border-zinc-800">
-      <header className="flex flex-wrap items-center justify-between gap-2 border-b border-zinc-200 px-4 py-3 dark:border-zinc-800">
-        <h2 className="font-semibold">할인</h2>
+    <section className="panel">
+      <header className="flex flex-wrap items-center justify-between gap-2 border-b border-zinc-800 px-5 py-4">
+        <h2 className="flex items-center gap-2 text-lg font-semibold text-white">
+          <Tag className="size-5 text-[#a68bff]" aria-hidden />
+          할인
+        </h2>
         {data ? (
           <p className="text-xs text-zinc-500">
             {data.pricePending > 0 ? `가격 ${data.pricePending}개 수집 중, 자동 갱신 · ` : ""}
@@ -91,7 +96,7 @@ function DlcDeals({ data }: { data: Deals }) {
 function DealList({ items, empty }: { items: DealItem[]; empty: string }) {
   if (items.length === 0) return <p className="mt-2 text-sm text-zinc-500">{empty}</p>;
   return (
-    <ul className="mt-2 divide-y divide-zinc-200 dark:divide-zinc-800">
+    <ul className="mt-2 divide-y divide-zinc-800/80">
       {items.map((d) => (
         <li key={d.appid} className="flex items-center gap-3 py-2">
           <a href={d.storeUrl} target="_blank" rel="noopener noreferrer" className="shrink-0">
@@ -107,7 +112,7 @@ function DealList({ items, empty }: { items: DealItem[]; empty: string }) {
             </p>
           </div>
           <div className="shrink-0 text-right">
-            <span className="rounded bg-emerald-600 px-1 text-xs font-medium text-white">-{d.price.discountPercent}%</span>
+            <span className="rounded bg-emerald-500 px-1.5 text-xs font-medium text-white">-{d.price.discountPercent}%</span>
             <p className="text-xs text-zinc-400 line-through">{formatPrice(d.price.initialPrice, d.price.currency)}</p>
             <p className="text-sm tabular-nums">{formatPrice(d.price.finalPrice, d.price.currency)}</p>
           </div>

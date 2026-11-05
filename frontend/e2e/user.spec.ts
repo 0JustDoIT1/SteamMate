@@ -1,42 +1,50 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test } from "@playwright/test";
 
 // 로그인 흐름(PRD DoD: Steam 로그인 → 내 게임 분석 → 보유 게임 추천(이유) → 할인 → 뉴스 → 질문 → 로그아웃).
 // 실제 Steam API와 내 계정 데이터를 쓴다. E2E_STEAMID가 없으면 건너뛴다(global-setup 참조).
 test.skip(!/^\d{17}$/.test(process.env.E2E_STEAMID ?? ""), "E2E_STEAMID(17자리)가 필요합니다");
 
-async function openTab(page: Page, name: string | RegExp) {
-  await page.getByRole("tablist", { name: "내 라이브러리 섹션" }).getByRole("tab", { name }).click();
-}
-
-test("내 라이브러리: 요약과 탭별 분석·추천·할인", async ({ page }) => {
+test("내 라이브러리: 요약과 보유 게임 추천(점수·이유)", async ({ page }) => {
   await page.goto("/me");
   await expect(page.getByRole("heading", { level: 1, name: "내 라이브러리" })).toBeVisible();
   await expect(page.getByRole("button", { name: "로그아웃" })).toBeVisible();
+  // 위쪽 바: 내 Steam 프로필(닉네임·사진), 누르면 Steam 프로필로
+  await expect(page.getByRole("link", { name: /.+/ }).filter({ has: page.locator("img.rounded-full") })).toHaveAttribute(
+    "href",
+    /^https:\/\/steamcommunity\.com\//,
+  );
+  await expect(page.getByRole("list", { name: "주 메뉴" }).first().getByRole("link")).toHaveCount(6);
   await expect(page.getByText("플레이한 게임")).toBeVisible();
 
-  // 보유 게임 추천: 카드마다 점수·이유
   const recs = page.getByRole("heading", { name: /다음에 할 게임|이어서 하기/ });
   await expect(recs).toBeVisible();
   const section = page.locator("section", { has: recs });
   await expect(section.getByText(/후보 \d+개 중 상위/)).toBeVisible({ timeout: 60_000 });
   await expect(section.locator("ol > li").first()).toContainText(/점/);
+});
 
-  await openTab(page, "구매 추천");
+test("사이드바 메뉴마다 한 페이지: 구매 추천·할인·장르 취향", async ({ page }) => {
+  await page.goto("/me");
+  const nav = page.getByRole("list", { name: "주 메뉴" }).first();
+
+  await nav.getByRole("link", { name: "구매 추천" }).click();
+  await expect(page).toHaveURL(/\/me\/store$/);
   await expect(page.getByRole("heading", { name: "내 취향에 맞는 인기 게임" })).toBeVisible();
 
-  await openTab(page, "할인");
-  const deals = page.locator("section", { has: page.getByRole("heading", { name: "할인", exact: true }) });
+  await nav.getByRole("link", { name: "할인" }).click();
+  await expect(page).toHaveURL(/\/me\/deals$/);
+  const deals = page.locator("section", { has: page.getByRole("heading", { name: "할인", exact: true, level: 2 }) });
   await expect(deals).toBeVisible();
   await expect(deals.getByText("할인 정보를 불러오는 중…")).toBeHidden({ timeout: 60_000 });
   await expect(deals.getByRole("alert")).toHaveCount(0);
 
-  await openTab(page, "장르 취향");
+  await nav.getByRole("link", { name: "장르 취향" }).click();
+  await expect(page).toHaveURL(/\/me\/genres$/);
   await expect(page.getByRole("heading", { name: "내 장르 취향" })).toBeVisible();
 });
 
-test("보유 게임 목록에서 그 게임의 뉴스로 이동한다", async ({ page }) => {
-  await page.goto("/me");
-  await openTab(page, /보유 게임 목록/);
+test("공식 뉴스: 보유 게임 목록에서 그 게임의 공지로 이동한다", async ({ page }) => {
+  await page.goto("/news");
   const list = page.locator("section", { has: page.getByRole("heading", { name: "보유 게임 목록" }) });
   await list.getByRole("link", { name: "뉴스" }).first().click();
   await expect(page).toHaveURL(/\/news\/\d+$/);
