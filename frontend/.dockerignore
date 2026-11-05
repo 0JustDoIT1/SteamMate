@@ -1,0 +1,8 @@
+# 비밀값·로컬 설정과 빌드 산출물은 이미지에 넣지 않는다
+.env
+.env.*
+node_modules/
+.next/
+tsconfig.tsbuildinfo
+playwright-report/
+test-results/

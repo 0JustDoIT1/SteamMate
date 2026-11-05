@@ -1,0 +1,75 @@
+# SteamMate 운영 모드 구성 (9단계, 로컬 실행용 — 사용자 결정: 외부 공개 배포 없음)
+#
+#   docker compose -f compose.prod.yml up --build -d     →  http://localhost:8080
+#   docker compose -f compose.prod.yml down              (데이터 유지, 지우려면 -v)
+#
+# - 비밀값(STEAM_API_KEY, SESSION_SECRET)은 backend/.env를 실행 시 환경 변수로 넘긴다(이미지에 넣지 않음).
+#   운영용 값은 아래 environment가 덮어쓴다. 실제 서버에 올릴 때는 개발과 다른 비밀값을 따로 둔다.
+# - 뉴스 AI 질문은 PRD 출시 게이트에 따라 끈다(Ollama 불필요).
+# - 개발 환경(docker-compose.yml의 DB 5433, 개발 서버 3000·8000)과 포트·볼륨이 겹치지 않는다.
+name: steammate-prod
+
+x-backend: &backend
+  build: ./backend
+  image: steammate-prod-backend  # migrate·backend가 같은 이미지를 쓴다(한 번만 빌드)
+  env_file:
+    - path: backend/.env
+      required: true
+  environment:
+    APP_ENV: production
+    DATABASE_URL: postgresql+asyncpg://steammate:${POSTGRES_PASSWORD:-steammate}@db:5432/steammate
+    PUBLIC_BASE_URL: http://localhost:8080
+    CORS_ORIGINS: http://localhost:8080
+    NEWS_AI_ENABLED: "false"
+
+services:
+  db:
+    image: postgres:17
+    environment:
+      POSTGRES_USER: steammate
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-steammate}
+      POSTGRES_DB: steammate
+    volumes:
+      - pgdata-prod:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U steammate -d steammate"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+  # 스키마는 버전 관리되는 마이그레이션으로만 만든다(CLAUDE.md). 한 번 실행하고 끝난다.
+  migrate:
+    <<: *backend
+    command: ["alembic", "upgrade", "head"]
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: "no"
+
+  backend:
+    <<: *backend
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        BACKEND_URL: http://backend:8000
+    ports:
+      - "127.0.0.1:8080:3000"
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  pgdata-prod:

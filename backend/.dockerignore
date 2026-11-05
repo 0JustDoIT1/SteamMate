@@ -1,0 +1,10 @@
+# 비밀값과 개발 산출물은 이미지에 넣지 않는다(.env는 compose가 실행 시 환경 변수로 넘긴다)
+.env
+.env.*
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+tests/
+experiments/
