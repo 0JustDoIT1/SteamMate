@@ -119,10 +119,15 @@ function AskForm({ appid }: { appid: number }) {
 }
 
 function Answer({ data }: { data: AskResponse }) {
+  // 최신 업데이트 공지가 이미 출처에 있으면 같은 공지를 두 번 보이지 않는다.
+  // 모델이 다른 공지를 요약했을 때만 "무엇을 최신으로 봤는지" 알려 준다
+  const latest = data.latestUpdate;
+  const showLatest = latest !== null && latest !== undefined && !data.sources.some((s) => s.gid === latest.gid);
   return (
     <div className="space-y-3 border-t border-zinc-200 px-4 py-4 dark:border-zinc-800">
       {data.refused ? (
-        <p className="text-sm text-zinc-500">공지에서 근거를 찾지 못했습니다. ({data.answer})</p>
+        // 서버가 질문 유형에 맞춘 안내 문장을 준다(내부 판정 말 "근거 없음"은 보이지 않는다)
+        <p className="text-sm text-zinc-500">{data.answer}</p>
       ) : data.summary ? (
         <SummaryView summary={data.summary} />
       ) : data.value ? (
@@ -149,13 +154,13 @@ function Answer({ data }: { data: AskResponse }) {
           </ul>
         </div>
       ) : null}
-      {data.latestUpdate ? (
+      {showLatest ? (
         <p className="text-xs text-zinc-500">
           최신 업데이트 기준:{" "}
-          <a href={data.latestUpdate.url} target="_blank" rel="noopener noreferrer" className="hover:underline">
-            {data.latestUpdate.title}
+          <a href={latest.url} target="_blank" rel="noopener noreferrer" className="hover:underline">
+            {latest.title}
           </a>{" "}
-          ({formatDateTime(data.latestUpdate.publishedAt)})
+          ({formatDateTime(latest.publishedAt)})
         </p>
       ) : null}
     </div>

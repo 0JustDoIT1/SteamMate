@@ -64,6 +64,15 @@ logger = logging.getLogger(__name__)
 NO_DOCS_ANSWER = "질문에 쓸 수 있는 공식 공지가 없습니다."
 UNPARSED_ANSWER = "답변을 만들지 못했습니다. 질문을 조금 바꿔 다시 시도해 주세요."
 NO_CURRENT_ANSWER = "진행 중이거나 예정된 일정을 공지에서 찾지 못했습니다. 최근 끝난 일정:"
+# 근거가 없을 때 보이는 문장. 공지 대부분이 영어라 값 질문은 원문 이름으로 물으면 찾을 가능성이 높다
+REFUSAL_ANSWERS = {
+    QaIntent.UPDATE_SUMMARY: "최근 공지에서 업데이트 내용을 찾지 못했습니다.",
+    QaIntent.VALUE: "최근 공지에서 이 수치를 찾지 못했습니다. 아이템·기능 이름을 공지에 쓰인 원문(영어) 그대로 "
+                    "적으면 더 잘 찾습니다.",
+    QaIntent.SCHEDULE: "최근 공지에서 해당 일정을 찾지 못했습니다.",
+    QaIntent.CONTENT: "최근 공지에서 새 콘텐츠 소식을 찾지 못했습니다.",
+    QaIntent.OTHER: "최근 공지에서 관련 내용을 찾지 못했습니다.",
+}
 
 
 class QaMode(StrEnum):
@@ -306,6 +315,9 @@ class NewsQaService:
         if isinstance(filled, UpdateSummary) and not filled.version:
             filled = filled.model_copy(update={"version": title_version(summary_title)})
         answer, refused = render(filled)
+        if refused:
+            # "근거 없음"은 채점·판정용 말이다. 사용자에게는 유형에 맞는 문장으로 보인다
+            answer = REFUSAL_ANSWERS[intent]
         details = {} if refused else _details(filled, summary_title)
         schedule = details.get("schedule")
         only_ended = schedule is not None and all(i.status is Status.ENDED for i in schedule.items)

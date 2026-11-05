@@ -222,7 +222,8 @@ async def test_refusal_has_no_sources(ai_client, steam_handler, fake_llm):
     fake_llm.reply = value_reply("근거 없음", ["N001", "N002"], "Phantom Scythe 쿨다운")
     body = (await ai_client.post("/steam/news/ask", json=ask("Phantom Scythe 쿨다운은?"))).json()
     assert body["refused"] is True and body["sources"] == [] and body["value"] is None
-    assert body["answer"] == "근거 없음"
+    # 판정용 "근거 없음" 대신 유형에 맞는 안내 문장(값 질문은 원문 이름으로 물어보라는 도움말 포함)
+    assert body["answer"].startswith("최근 공지에서 이 수치를 찾지 못했습니다.") and "원문" in body["answer"]
 
 
 async def test_broken_json_reply_is_reported_not_shown(ai_client, steam_handler, fake_llm):
