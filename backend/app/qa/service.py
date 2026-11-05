@@ -1,4 +1,4 @@
-"""뉴스 AI 질문(F6 R2, PRD v6.9).
+"""뉴스 AI 질문(F6 R2, PRD v6.10).
 
 공식 공지 전문(최근 qa_max_docs건) → 정리 → 질문 유형 판별 → 분량으로 Full Context / RAG 선택 → 로컬 LLM이
 유형별 칸(JSON)을 채움 → 근거 검증.
@@ -56,6 +56,7 @@ from app.qa.templates import (
     system_prompt,
     today_kst,
 )
+from app.qa.translate import needs_translation, translate_lines
 from app.qa.value import DocInfo, ValueKind, compute_value
 from app.schemas import CamelModel
 
@@ -315,6 +316,11 @@ class NewsQaService:
         if isinstance(filled, UpdateSummary) and not filled.version:
             filled = filled.model_copy(update={"version": title_version(summary_title)})
         answer, refused = render(filled)
+        if not refused and isinstance(filled, UpdateSummary | ContentAnswer):
+            translated = await self._translate_lists(filled)
+            if translated is not filled:
+                filled = translated
+                answer, refused = render(filled)
         if refused:
             # "근거 없음"은 채점·판정용 말이다. 사용자에게는 유형에 맞는 문장으로 보인다
             answer = REFUSAL_ANSWERS[intent]
@@ -327,6 +333,22 @@ class NewsQaService:
             answer = f"{NO_CURRENT_ANSWER}\n{answer}"
         return AskResponse(answer=answer, refused=refused,
                            sources=[] if refused else [by_id[c].source() for c in valid], **{**base, **details})
+
+    async def _translate_lists(self, filled: UpdateSummary | ContentAnswer) -> UpdateSummary | ContentAnswer:
+        """목록 항목 중 영어로 남은 줄만 다시 번역한다(PRD v6.10). 영어 줄이 없으면 호출 없이 그대로."""
+        keys = ("new_features", "balance", "bug_fixes") if isinstance(filled, UpdateSummary) else ("highlights",)
+        lists = [getattr(filled, k) for k in keys]
+        flat = [line for items in lists for line in items]
+        if not any(needs_translation(line) for line in flat):
+            return filled
+        async with self._gpu:
+            out = await translate_lines(self.llm, flat, self._policy.rag_num_ctx)
+        if out == flat:
+            return filled
+        update, start = {}, 0
+        for key, items in zip(keys, lists, strict=True):
+            update[key], start = out[start:start + len(items)], start + len(items)
+        return filled.model_copy(update=update)
 
     def _truncated(self, result: ChatResult, num_ctx: int) -> bool:
         # 넘치면 Ollama가 입력 앞부분을 잘라 낸다(7단계 사전 측정에서 확인)

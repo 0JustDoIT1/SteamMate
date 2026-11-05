@@ -47,7 +47,9 @@ class FakeLlm:
             await asyncio.sleep(self.delay)
             self.chats.append((system, user, num_ctx))
             self.schemas.append(schema)
-            content = self.reply if isinstance(self.reply, str) else json.dumps(self.reply, ensure_ascii=False)
+            # 목록이면 호출마다 차례로 답한다(답변 → 번역처럼 두 번 묻는 경우)
+            reply = self.reply.pop(0) if isinstance(self.reply, list) else self.reply
+            content = reply if isinstance(reply, str) else json.dumps(reply, ensure_ascii=False)
             return ChatResult(content, self.prompt_tokens(num_ctx), "stop")
         finally:
             self.active -= 1
@@ -215,6 +217,23 @@ async def test_schedule_and_content_answers_carry_server_status(ai_client, steam
     assert body["content"] == {"name": "Relic Hunt", "form": "FREE_UPDATE", "releaseDate": "2026-11-05",
                                "status": "ONGOING", "highlights": ["새 보스 Warden"]}
     assert "(최신 업데이트)" not in fake_llm.chats[-1][1]  # 최신 표시는 업데이트 요약에만
+
+
+async def test_summary_english_lines_are_translated_once(ai_client, steam_handler, fake_llm):
+    steam_handler["fn"] = news_handler(two_notes())
+    english = "Arc Lance no longer clips through Glass Canyon walls."
+    fake_llm.reply = [
+        {"version": "1.1", "date": NEW_DAY, "new_features": ["로드아웃 공유"], "balance": [], "bug_fixes": [english],
+         "sources": ["N002"]},
+        {"translations": ["Arc Lance가 더 이상 Glass Canyon 벽을 통과하지 않음"]},
+    ]
+    body = (await ai_client.post("/steam/news/ask", json=ask("최신 업데이트에서 바뀐 점은?"))).json()
+    assert body["summary"]["bugFixes"] == ["Arc Lance가 더 이상 Glass Canyon 벽을 통과하지 않음"]
+    assert "Glass Canyon 벽을 통과하지 않음" in body["answer"]
+    assert len(fake_llm.chats) == 2 and english in fake_llm.chats[1][1]  # 영어 줄만 번역 요청에
+    # 답변 요청과 같은 num_ctx — 다르면 Ollama가 모델을 다시 올려 다음 질문까지 느려진다
+    assert fake_llm.chats[1][2] == get_settings().qa_rag_num_ctx
+    assert body["inputTokens"] == 100  # 응답의 입력 토큰은 답변 요청 기준
 
 
 async def test_refusal_has_no_sources(ai_client, steam_handler, fake_llm):
