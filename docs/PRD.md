@@ -25,6 +25,12 @@
 > **v6.10 (2026-11-06, 사용자 승인)**: 업데이트 요약·신규 콘텐츠의 목록 항목 중 영어 원문 그대로 나온 줄만 같은 모델로 한 번 더 번역(이름·숫자는 원문 유지). 서버가 원문의 대문자 이름과 숫자가 번역에 그대로 있는지 확인하고, 아니면 그 줄은 원문을 보인다. 답을 만드는 지시문은 그대로(재실험 불필요).
 >
 > **v6.11 (2026-11-06, 사용자 승인 → 시험 후 되돌림)**: 값 질문만 RAG 검색 조각을 5개 → 10개로 늘려 시험했다(v8 재실험). RAG 전체 92/81/75/61% → 89/83/69/64%, multi 일부 상승·latest 하락(옛 공지 조각이 늘어 최신 기록을 놓침), 입력 토큰 약 2배 → 승인 조건(좋아지지 않으면 되돌림)대로 **조각 5개 유지**.
+>
+> **v6.12 (2026-11-06, 사용자 승인)**: 값 질문 RAG에 "이름 검색"을 더한다 — 질문 속 영문 이름(예: Void Pistol)이 글자 그대로 든 조각을 최근 문서부터 최대 6개(의미 검색 5개와 별도, 7단계 설계의 C 선택적 Hybrid). 이름이 한 줄만 나온 옛 패치 조각을 의미 검색이 밀어내 여러 공지의 변경 기록을 놓치던 문제. 이름이 없으면(한국어만) 지금과 같다. 재실험으로 효과를 확인하고 좋아지지 않으면 되돌린다.
+>
+> **v6.13 (2026-11-06, 사용자 승인)**: 값 질문의 변경 기록에 속성 이름(attribute, 공지 원문 예: Knockback)을 받아 화면에 함께 보이고, 질문의 속성(한국어)과 공지 쪽 이름을 잇는 서버 대응표로 다른 속성의 기록을 버린다(사거리를 물었는데 Knockback 값을 답하던 문제). 표에 없는 말이거나 속성을 적지 않은 기록은 거르지 않는다. 한 칸에 "300 to 400"처럼 온 값은 서버가 이전·이후로 나눈다.
+>
+> **v6.14 (2026-11-06, 사용자 승인)**: 화면 개편 — 어두운 남색·보라 강조 디자인, 아이콘 `lucide-react`(사용자 선택). 내 라이브러리의 탭을 사이드바 메뉴별 페이지로 분리(`/me`, `/me/store`, `/me/deals`, `/me/genres`, `/news`), 로그인 전에는 로그인이 필요한 메뉴를 숨긴다. 위쪽 바에 내 Steam 닉네임·프로필 사진(`GET /me/profile`, 공개 프로필 요약, 메모리 10분).
 
 ---
 
@@ -175,15 +181,15 @@ Browser ─ Next.js (App Router, client: TanStack Query + Zustand)
 ### 4. 업데이트 AI
 1. 게임별 뉴스 API를 요청 시 호출, 컨텐츠 BBCode/HTML 정제 및 태그·URL 검증. 공식 공지 피드(`steam_community_announcements`)만 받고, `maxlength`는 쓰지 않는다(Steam이 서식을 지우며 문단을 붙임). 원문 링크는 appid·gid로 만든 상점 공지 주소, 본문이 외부 링크뿐인 공지는 그 주소(`externalUrl`)로 연결한다.
 2. 총 입력 토큰에 따라 Full Context 또는 In-Memory RAG 중 사전 실험으로 정한 모드를 사용. 정제 후 코퍼스가 약 8k 토큰 이하면 Full Context, 초과하면 RAG(v6.6, 7단계 실험). 토큰 초과 시 안전하게 검색 모드로 전환. 8k는 `bonsai-2:9b` 기준이므로 서비스 LLM이 바뀌면 다시 확인한다.
-3. 근거 없는 경우 답변 불가 알림, 원문 링크 출력. 대상은 항상 공식 공지 최근 50건이며 기간 지정은 두지 않는다(v6.7). "최신 업데이트"는 제목에 버전 번호(예: 1.4.5.7)나 업데이트·패치·핫픽스가 들어간 가장 최근 공지(없으면 가장 최근 글)로 본다. 제목에 상점(Store·Shop)·드롭(Drops)·굿즈(Merch·Plush·Figure 등) 단어가 든 글은 후보에서 빼고, 테스트 빌드(EXP·Experimental·PTB·Beta·Public Test)는 정식 빌드 후보가 없을 때만 고른다(v6.8). **일정·신규 콘텐츠 질문에만** 지시문에 오늘 날짜(한국)를 주고("다음·진행 중이면 오늘 이후·오늘 포함 일정을 먼저"), RAG에서 상점·굿즈 글을 뺀 최근 공지 5건마다 질문과 가장 가까운 청크 1개를 더 넣는다(v6.8). RAG 검색 조각은 질문과 가까운 순으로 5개(값 질문 10개는 v6.11에서 시험 후 되돌림). **업데이트 요약 질문에만** 프롬프트 제목에 "(최신 업데이트)"를 붙이고 RAG에서 그 공지의 청크를 질문과 가까운 순으로 3개 더 넣는다(의미 검색은 날짜를 보지 않아 옛 공지가 걸리는 문제 대응). 값 질문에는 넣지 않는다(그 공지에 값이 없으면 "근거 없음"으로 답하는 부작용, v4 재실험). 분량은 정제 후 글자 수로 어림해 모드를 고르고(약 3자 = 1토큰), 실제 입력 토큰은 응답에 기록한다.
+3. 근거 없는 경우 답변 불가 알림, 원문 링크 출력. 대상은 항상 공식 공지 최근 50건이며 기간 지정은 두지 않는다(v6.7). "최신 업데이트"는 제목에 버전 번호(예: 1.4.5.7)나 업데이트·패치·핫픽스가 들어간 가장 최근 공지(없으면 가장 최근 글)로 본다. 제목에 상점(Store·Shop)·드롭(Drops)·굿즈(Merch·Plush·Figure 등) 단어가 든 글은 후보에서 빼고, 테스트 빌드(EXP·Experimental·PTB·Beta·Public Test)는 정식 빌드 후보가 없을 때만 고른다(v6.8). **일정·신규 콘텐츠 질문에만** 지시문에 오늘 날짜(한국)를 주고("다음·진행 중이면 오늘 이후·오늘 포함 일정을 먼저"), RAG에서 상점·굿즈 글을 뺀 최근 공지 5건마다 질문과 가장 가까운 청크 1개를 더 넣는다(v6.8). RAG 검색 조각은 질문과 가까운 순으로 5개(값 질문 10개는 v6.11에서 시험 후 되돌림). 값 질문은 대상 영문 이름이 든 조각을 최근 문서부터 최대 6개 더 넣는다(v6.12). **업데이트 요약 질문에만** 프롬프트 제목에 "(최신 업데이트)"를 붙이고 RAG에서 그 공지의 청크를 질문과 가까운 순으로 3개 더 넣는다(의미 검색은 날짜를 보지 않아 옛 공지가 걸리는 문제 대응). 값 질문에는 넣지 않는다(그 공지에 값이 없으면 "근거 없음"으로 답하는 부작용, v4 재실험). 분량은 정제 후 글자 수로 어림해 모드를 고르고(약 3자 = 1토큰), 실제 입력 토큰은 응답에 기록한다.
 4. 뉴스 전문·임베딩은 영구 DB에 적재하지 않음. 요청·임시 TTL 캐시 사용 후 만료 삭제. TTL은 법적 이용 허가를 대신하지 않음.
-5. LLM(v6.7): 로컬 Ollama `bonsai-2:9b`, RAG 임베딩 `bge-m3`. **질문 유형별 답변 틀(지시문 v5)**: 서버가 질문 단어로 유형을 판별하고(값 → 일정 → 신규 콘텐츠 → 업데이트 요약 → 기타 순, v6.8), 모델은 유형별 JSON 칸만 채운다(Ollama `format`으로 구조 강제). 업데이트 요약 = 버전·날짜·새 기능·밸런스 조정·버그 수정(분야별 최대 2개, 구체적 이름·수치) + 규모(대형/패치/핫픽스)·빌드(정식/테스트)는 서버가 공지 제목으로 판정, 값 = 대상 + 변경 기록 최대 8건(문서 ID·버전·이전 값·이후 값; 순서는 서버가 문서 날짜로, 넘기지 않은 문서의 기록은 버림, 빈 버전은 제목에서) → 서버가 계산 방식을 질문 단어로 정한다(v6.9): 기본 = 가장 늦은 기록의 이후 값, 질문에 버전 번호 = 그 버전 기록(없으면 근거 없음, 같은 버전의 정규 패치·핫픽스는 질문이 핫픽스를 말할 때만 핫픽스), "출시 당시·처음" = 첫 기록의 이전(없으면 이후) 값, "언제·몇 버전" = 마지막(추가를 물으면 첫) 기록의 버전, "몇 번·횟수" = 값이 바뀐 기록 수, "얼마나 늘/줄·차이" = 최신 값 − 처음 값의 크기(숫자를 못 읽으면 근거 없음), "바뀐 버전·버전을 모두" = 기록 버전 목록(날짜순), 일정 = 최대 3건(이름·종류(이벤트·시즌/출시/점검/테스트/할인)·시작·종료 YYYY-MM-DD) + 상태(진행 중/예정/종료/알 수 없음)는 서버가 한국 날짜(Asia/Seoul) 기준 날짜 단위로 판정해 진행 중·예정을 먼저 표시(시작일만 있으면 출시는 하루짜리, 이벤트 등은 시작 뒤 "알 수 없음"). 질문이 지금·앞으로(다음·진행·예정 등)를 묻는데 찾은 일정이 모두 종료면 "진행 중이거나 예정된 일정을 찾지 못함"을 알리고 끝난 일정은 흐리게 함께 보인다, 신규 콘텐츠·DLC = 이름·형태(무료 업데이트/DLC/확장)·출시일·핵심 내용 최대 3개 + 상태(서버 판정), 기타 = 자유 답(개발 일지·로드맵 포함). 칸 개수로 나열·뭉뚱그림을 막고 화면은 유형별로 같은 모양으로 그린다. 칸이 문서 번호뿐이면 그 공지 제목으로 바꾸고, JSON이 깨지면 다시 질문하라고 안내한다. 지시문을 바꿀 때마다 7단계 실험을 다시 돌려 임계값을 확인한다. 모델이 인용한 근거 ID 중 넘기지 않은 문서는 버린다. 요약·콘텐츠 목록에서 한글이 거의 없는 줄은 따로 한 번 더 번역하고(이름·숫자 유지 확인, 실패하면 원문, v6.10), 영어 줄이 없으면 추가 호출하지 않는다. GPU 1개 전제라 질문은 한 번에 하나씩 처리한다. 호출부는 인터페이스로 분리해 교체 가능하게 둔다(교체 시 임계값 재확인).
+5. LLM(v6.7): 로컬 Ollama `bonsai-2:9b`, RAG 임베딩 `bge-m3`. **질문 유형별 답변 틀(지시문 v5)**: 서버가 질문 단어로 유형을 판별하고(값 → 일정 → 신규 콘텐츠 → 업데이트 요약 → 기타 순, v6.8), 모델은 유형별 JSON 칸만 채운다(Ollama `format`으로 구조 강제). 업데이트 요약 = 버전·날짜·새 기능·밸런스 조정·버그 수정(분야별 최대 2개, 구체적 이름·수치) + 규모(대형/패치/핫픽스)·빌드(정식/테스트)는 서버가 공지 제목으로 판정, 값 = 대상 + 변경 기록 최대 8건(문서 ID·속성 이름·버전·이전 값·이후 값; 질문의 속성과 다른 속성 기록은 서버 대응표로 버림(v6.13); 순서는 서버가 문서 날짜로, 넘기지 않은 문서의 기록은 버림, 빈 버전은 제목에서) → 서버가 계산 방식을 질문 단어로 정한다(v6.9): 기본 = 가장 늦은 기록의 이후 값, 질문에 버전 번호 = 그 버전 기록(없으면 근거 없음, 같은 버전의 정규 패치·핫픽스는 질문이 핫픽스를 말할 때만 핫픽스), "출시 당시·처음" = 첫 기록의 이전(없으면 이후) 값, "언제·몇 버전" = 마지막(추가를 물으면 첫) 기록의 버전, "몇 번·횟수" = 값이 바뀐 기록 수, "얼마나 늘/줄·차이" = 최신 값 − 처음 값의 크기(숫자를 못 읽으면 근거 없음), "바뀐 버전·버전을 모두" = 기록 버전 목록(날짜순), 일정 = 최대 3건(이름·종류(이벤트·시즌/출시/점검/테스트/할인)·시작·종료 YYYY-MM-DD) + 상태(진행 중/예정/종료/알 수 없음)는 서버가 한국 날짜(Asia/Seoul) 기준 날짜 단위로 판정해 진행 중·예정을 먼저 표시(시작일만 있으면 출시는 하루짜리, 이벤트 등은 시작 뒤 "알 수 없음"). 질문이 지금·앞으로(다음·진행·예정 등)를 묻는데 찾은 일정이 모두 종료면 "진행 중이거나 예정된 일정을 찾지 못함"을 알리고 끝난 일정은 흐리게 함께 보인다, 신규 콘텐츠·DLC = 이름·형태(무료 업데이트/DLC/확장)·출시일·핵심 내용 최대 3개 + 상태(서버 판정), 기타 = 자유 답(개발 일지·로드맵 포함). 칸 개수로 나열·뭉뚱그림을 막고 화면은 유형별로 같은 모양으로 그린다. 칸이 문서 번호뿐이면 그 공지 제목으로 바꾸고, JSON이 깨지면 다시 질문하라고 안내한다. 지시문을 바꿀 때마다 7단계 실험을 다시 돌려 임계값을 확인한다. 모델이 인용한 근거 ID 중 넘기지 않은 문서는 버린다. 요약·콘텐츠 목록에서 한글이 거의 없는 줄은 따로 한 번 더 번역하고(이름·숫자 유지 확인, 실패하면 원문, v6.10), 영어 줄이 없으면 추가 호출하지 않는다. GPU 1개 전제라 질문은 한 번에 하나씩 처리한다. 호출부는 인터페이스로 분리해 교체 가능하게 둔다(교체 시 임계값 재확인).
 6. 배포: Ollama는 배포 대상이 아니다. 기능 플래그 `NEWS_AI_ENABLED`(기본 OFF)를 켠 환경에서만 질문 시점에 Ollama에 연결하며, 서버 기동은 Ollama 유무와 무관하다. 켜져 있는데 Ollama에 닿지 않으면 `AI_UNAVAILABLE`.
 
 ## 프론트엔드 상태 관리
 - **TanStack Query**: 서버 데이터 전부(`['me']`(로그인 상태), `['library']`, `['recs',opts]`, `['deals',cc]`, `['dashboard',cc]`, `['news',appid]`, `useMutation(ask)`). coverage < 100%면 `refetchInterval` 폴링.
 - **Zustand**: 전역 클라이언트 상태(`recOptions`, `excludedAppids`(persist), `selectedAppid`, `cc`). 로그인 상태·steamId를 포함한 서버 데이터를 복제하지 않는다. 클라이언트 컴포넌트에서만 사용.
-- 화면: `/` 대시보드 + 로그인 버튼 → `/me` 요약 + 탭(보유 게임 추천·구매 추천·할인·장르 취향·보유 게임 목록) → `/news/[appid]` 뉴스·질문.
+- 화면(v6.14): 왼쪽 사이드바 메뉴마다 한 페이지 — `/` 인기 대시보드, `/me` 내 라이브러리(통계·보유 게임 추천), `/me/store` 구매 추천, `/me/deals` 할인, `/me/genres` 장르 취향, `/news` 공식 뉴스(보유 게임 목록) → `/news/[appid]` 뉴스·질문. 로그인 전에는 대시보드만 보이고 로그인 안내를 둔다. 위쪽 바에 내 Steam 닉네임·프로필 사진과 로그인·로그아웃.
 
 ---
 
@@ -232,13 +238,14 @@ Browser ─ Next.js (App Router, client: TanStack Query + Zustand)
 | GET | `/auth/steam/callback` | — | 서명 검증 후 쿠키 발급, `/me`로 리다이렉트 |
 | GET | `/auth/me` | 선택 | `{steamId}` 또는 401 |
 | POST | `/auth/logout` | — | 쿠키 삭제 |
+| GET | `/me/profile` | 필수 | `{steamId, personaName?, avatarUrl?, profileUrl?}`(공개 프로필 요약, 메모리 10분, 사진·프로필 주소는 Steam 도메인 https만) |
 | GET | `/me/library` | 필수 | 본인 공개 게임·플레이시간·장르 분포·`metadataCoverage` |
 | GET | `/me/recommendations?exclude=` | 필수 | 보유 게임 TOP3 + reasons + 모드·스냅샷 |
 | GET | `/me/store-recommendations?onSaleOnly=` | 필수 | 미보유 게임 TOP10 + reasons·가격·`wishlisted`, `candidatePoolSize`, `candidateCount`, `metadataPending`, `pricePending`, 모드, `poolSnapshotAt`, `priceSnapshotAt`. 수집 전 `DATA_NOT_READY` |
 | GET | `/me/deals` | 필수 | `wishlistDeals`, `wishlistStatus`(OK·EMPTY_OR_PRIVATE·UNAVAILABLE), `dlcDeals`, `dlcBaseGameCount`, `dlcCheckedCount`, `pricePending`, `priceSnapshotAt` |
 | GET | `/steam/dashboard?cc=kr` | 선택 | 섹션별 `{source, snapshotAt, entries[]}`, 장르 분포. 로그인 시 개인화 |
 | GET | `/steam/news/{appid}?count=1~20&before=` | — | 공식 공지 `{appid, name, headerImage, items[{gid, title, author, publishedAt, excerpt, url, externalUrl}], nextBefore, askEnabled}`. 없는 게임 `NOT_FOUND` |
-| POST | `/steam/news/ask` | — | `{appid, question(1~300자)}`(다른 항목은 거절) → `{answer(공용 문장), refused, intent(UPDATE_SUMMARY·VALUE·SCHEDULE·CONTENT·OTHER), summary{version, date, scale(MAJOR·PATCH·HOTFIX), build(STABLE·TEST), newFeatures[], balance[], bugFixes[]}?, value{target, kind(CURRENT·AT_VERSION·FIRST·WHEN·COUNT·DIFF·VERSIONS), value, changedIn, previous, history[{version, date, before, after}]}?, schedule{items[{name, kind(EVENT·RELEASE·MAINTENANCE·TEST·SALE), start, end, status(ONGOING·UPCOMING·ENDED·UNKNOWN)}], noCurrent}?, content{name, form(FREE_UPDATE·DLC·EXPANSION·OTHER), releaseDate, status, highlights[]}?, mode(FULL_CONTEXT·RAG), sources[{gid, title, publishedAt, url}], dateRange{from, to}(사용한 글의 날짜 범위), latestUpdate{gid, title, publishedAt, url}?(업데이트 요약일 때), docCount, inputTokens, model, answeredAt}`. 플래그 OFF `FEATURE_DISABLED`, LLM 장애 `AI_UNAVAILABLE` |
+| POST | `/steam/news/ask` | — | `{appid, question(1~300자)}`(다른 항목은 거절) → `{answer(공용 문장), refused, intent(UPDATE_SUMMARY·VALUE·SCHEDULE·CONTENT·OTHER), summary{version, date, scale(MAJOR·PATCH·HOTFIX), build(STABLE·TEST), newFeatures[], balance[], bugFixes[]}?, value{target, kind(CURRENT·AT_VERSION·FIRST·WHEN·COUNT·DIFF·VERSIONS), value, changedIn, previous, history[{attribute, version, date, before, after}]}?, schedule{items[{name, kind(EVENT·RELEASE·MAINTENANCE·TEST·SALE), start, end, status(ONGOING·UPCOMING·ENDED·UNKNOWN)}], noCurrent}?, content{name, form(FREE_UPDATE·DLC·EXPANSION·OTHER), releaseDate, status, highlights[]}?, mode(FULL_CONTEXT·RAG), sources[{gid, title, publishedAt, url}], dateRange{from, to}(사용한 글의 날짜 범위), latestUpdate{gid, title, publishedAt, url}?(업데이트 요약일 때), docCount, inputTokens, model, answeredAt}`. 플래그 OFF `FEATURE_DISABLED`, LLM 장애 `AI_UNAVAILABLE` |
 
 추천 응답 예:
 ```json
@@ -341,6 +348,7 @@ Browser ─ Next.js (App Router, client: TanStack Query + Zustand)
 | BBCode/HTML 정제 | stdlib `html.parser` (한계 시 `beautifulsoup4`) | 6단계 |
 | 벡터 검색 | `numpy` | 7단계 |
 | LLM·임베딩·토크나이저 | Ollama 로컬 서버(REST, 기존 `httpx`로 호출 — 새 SDK 없음), 모델 `bonsai-2:9b`·`qwen3:4b`·`bge-m3`, 토큰 수는 Ollama 응답 값 사용 (사용자 승인) | 7단계 |
+| 아이콘 | `lucide-react` 1.61.0(쓴 아이콘만 번들, 사용자 선택) | 9단계 이후 |
 | 대시보드 그래프 | shadcn/ui Charts(`components/ui/chart.tsx` 수동 복사) + `recharts`·`react-is`, 유틸 `clsx`·`tailwind-merge` (사용자 선택, CLI 미사용) | 3b단계 |
 | E2E | `@playwright/test` | 9단계 |
 
