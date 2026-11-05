@@ -782,17 +782,36 @@ export interface components {
             /** Context */
             ctx?: Record<string, never>;
         };
+        /** ValueChangeDetail */
+        ValueChangeDetail: {
+            /** Version */
+            version: string;
+            /** Date */
+            date: string;
+            /** Before */
+            before: string;
+            /** After */
+            after: string;
+        };
         /** ValueDetail */
         ValueDetail: {
             /** Target */
             target: string;
+            kind: components["schemas"]["ValueKind"];
             /** Value */
             value: string;
             /** Changedin */
             changedIn: string;
             /** Previous */
             previous: string;
+            /** History */
+            history: components["schemas"]["ValueChangeDetail"][];
         };
+        /**
+         * ValueKind
+         * @enum {string}
+         */
+        ValueKind: "CURRENT" | "AT_VERSION" | "FIRST" | "WHEN" | "COUNT" | "DIFF" | "VERSIONS";
         /**
          * WishlistStatus
          * @enum {string}

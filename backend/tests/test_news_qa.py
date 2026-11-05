@@ -21,7 +21,9 @@ SECRET = "SECRET-BODY-MARKER"
 
 
 def value_reply(value: str, sources: list[str], target: str = "Arc Lance 피해량") -> dict:
-    return {"target": target, "value": value, "changed_in": "", "previous": "", "sources": sources}
+    """v7 값 칸: 모델은 변경 기록만 옮긴다. value가 근거 없음이면 기록 없음."""
+    history = [] if value == "근거 없음" else [{"doc": sources[0], "version": "", "before": "", "after": value}]
+    return {"target": target, "history": history, "sources": sources}
 
 
 class FakeLlm:
@@ -131,17 +133,24 @@ async def test_server_starts_and_reports_unavailable_without_ollama(monkeypatch,
 
 async def test_full_context_answer_with_verified_sources(ai_client, steam_handler, fake_llm):
     steam_handler["fn"] = news_handler(two_notes())
-    # N999는 넘기지 않은 문서(지어낸 ID)
-    fake_llm.reply = {"target": "Arc Lance 피해량", "value": "48", "changed_in": "Patch 1.1", "previous": "46",
-                      "sources": ["N002", "N999"]}
+    # 모델은 변경 기록만 옮긴다(순서도 뒤죽박죽). N999는 넘기지 않은 문서(지어낸 ID)
+    fake_llm.reply = {"target": "Arc Lance 피해량", "sources": ["N002", "N999"], "history": [
+        {"doc": "N002", "version": "", "before": "46", "after": "48"},
+        {"doc": "N999", "version": "9.9", "before": "48", "after": "99"},
+        {"doc": "N001", "version": "1.0", "before": "42", "after": "46"},
+    ]}
 
     res = await ai_client.post("/steam/news/ask", json=ask())
     body = res.json()
 
     assert res.status_code == 200
     assert body["intent"] == "VALUE" and body["mode"] == "FULL_CONTEXT" and body["refused"] is False
-    assert body["answer"] == "48 (Patch 1.1에서 46 → 48)"
-    assert body["value"] == {"target": "Arc Lance 피해량", "value": "48", "changedIn": "Patch 1.1", "previous": "46"}
+    # 지금 값 = 서버가 날짜로 고른 마지막 기록. 버전은 제목 "Patch 1.1"에서
+    assert body["answer"] == "48 (1.1에서 46 → 48)"
+    assert body["value"] == {"target": "Arc Lance 피해량", "kind": "CURRENT", "value": "48", "changedIn": "1.1",
+                             "previous": "46", "history": [
+                                 {"version": "1.0", "date": OLD_DAY, "before": "42", "after": "46"},
+                                 {"version": "1.1", "date": NEW_DAY, "before": "46", "after": "48"}]}
     assert body["summary"] is None and body["schedule"] is None and body["content"] is None
     assert [s["gid"] for s in body["sources"]] == ["2002"]  # 지어낸 ID는 버린다
     assert body["sources"][0]["url"] == f"https://store.steampowered.com/news/app/{APPID}/view/2002"
@@ -150,7 +159,7 @@ async def test_full_context_answer_with_verified_sources(ai_client, steam_handle
     assert body["docCount"] == 2 and body["inputTokens"] == 100 and body["model"] == "fake-model"
     system, user, _ = fake_llm.chats[0]
     assert system == system_prompt(QaIntent.VALUE)
-    assert fake_llm.schemas[0]["required"] == ["target", "value", "changed_in", "previous", "sources"]
+    assert fake_llm.schemas[0]["required"] == ["target", "history", "sources"]
     # 7단계 실험과 같은 형식: 오래된 글부터 N001, 입력은 최신 글이 먼저, 질문은 맨 끝
     assert user.index(f"[N002] Patch 1.1 ({NEW_DAY})") < user.index(f"[N001] Patch 1.0 ({OLD_DAY})")
     assert "(최신 업데이트)" not in user
@@ -224,11 +233,21 @@ async def test_broken_json_reply_is_reported_not_shown(ai_client, steam_handler,
 
 
 async def test_doc_id_only_answer_becomes_title(ai_client, steam_handler, fake_llm):
-    """버전을 묻는데 "[N002]"처럼 문서 번호로만 답하면 빈 답 대신 그 공지 제목을 보여 준다."""
+    """자유 답을 "[N002]"처럼 문서 번호로만 하면 빈 답 대신 그 공지 제목을 보여 준다."""
     steam_handler["fn"] = news_handler(two_notes())
-    fake_llm.reply = value_reply("[N002]", ["N002"], "Arc Lance가 바뀐 버전")
+    fake_llm.reply = {"answer": "[N002]", "sources": ["N002"]}
+    body = (await ai_client.post("/steam/news/ask", json=ask("Arc Lance 소식 알려줘"))).json()
+    assert body["intent"] == "OTHER" and body["answer"] == "Patch 1.1" and body["refused"] is False
+
+
+async def test_value_when_question_answers_version_from_title(ai_client, steam_handler, fake_llm):
+    """"몇 버전에서 바뀌었나"는 마지막 기록의 버전. 모델이 버전을 비우면 공지 제목에서 채운다."""
+    steam_handler["fn"] = news_handler(two_notes())
+    fake_llm.reply = {"target": "Arc Lance 피해량", "sources": [],
+                      "history": [{"doc": "N002", "version": "", "before": "46", "after": "48"}]}
     body = (await ai_client.post("/steam/news/ask", json=ask("Arc Lance는 몇 버전에서 바뀌었나요?"))).json()
-    assert body["answer"] == "Patch 1.1" and body["refused"] is False
+    assert body["value"]["kind"] == "WHEN" and body["value"]["value"] == "1.1"
+    assert body["answer"] == "1.1 (46 → 48)" and [s["gid"] for s in body["sources"]] == ["2002"]
 
 
 async def test_no_usable_news_skips_llm(ai_client, steam_handler, fake_llm):
@@ -632,8 +651,8 @@ def test_parse_rejects_broken_json_and_strips_thinking():
 
 
 def test_schema_matches_parser_fields():
-    from app.qa.templates import _MODELS, QaIntent, json_schema
+    from app.qa.templates import _MODELS, SERVER_FIELDS, QaIntent, json_schema
 
     for intent in QaIntent:
-        # status는 서버가 채우는 칸이라 모델에 요구하지 않는다
-        assert set(json_schema(intent)["required"]) == set(_MODELS[intent].model_fields) - {"status"}
+        # 상태·계산 결과는 서버가 채우는 칸이라 모델에 요구하지 않는다
+        assert set(json_schema(intent)["required"]) == set(_MODELS[intent].model_fields) - SERVER_FIELDS

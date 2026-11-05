@@ -1,4 +1,4 @@
-"""뉴스 AI 질문(F6 R2, PRD v6.8).
+"""뉴스 AI 질문(F6 R2, PRD v6.9).
 
 공식 공지 전문(최근 qa_max_docs건) → 정리 → 질문 유형 판별 → 분량으로 Full Context / RAG 선택 → 로컬 LLM이
 유형별 칸(JSON)을 채움 → 근거 검증.
@@ -56,6 +56,7 @@ from app.qa.templates import (
     system_prompt,
     today_kst,
 )
+from app.qa.value import DocInfo, ValueKind, compute_value
 from app.schemas import CamelModel
 
 logger = logging.getLogger(__name__)
@@ -127,11 +128,22 @@ class SummaryDetail(CamelModel):
     bug_fixes: list[str]
 
 
+class ValueChangeDetail(CamelModel):
+    version: str
+    date: str
+    before: str
+    after: str
+
+
 class ValueDetail(CamelModel):
     target: str
+    # 서버가 질문 단어로 고른 계산 방식(value.py)
+    kind: ValueKind
     value: str
     changed_in: str
     previous: str
+    # 모델이 문서에서 옮긴 변경 기록(날짜순). 답의 근거로 화면에 보인다
+    history: list[ValueChangeDetail]
 
 
 class ScheduleItemDetail(CamelModel):
@@ -281,6 +293,10 @@ class NewsQaService:
         if filled is None:
             logger.warning("structured answer unparsable: intent=%s done=%s", intent, result.done_reason)
             return AskResponse(answer=UNPARSED_ANSWER, refused=True, sources=[], **base)
+        if isinstance(filled, ValueAnswer):
+            # 최신 값·횟수·차이는 서버가 계산하고, 출처도 답으로 고른 기록의 문서로 정한다
+            docs = {d.id: DocInfo(d.day, d.news.title) for d in corpus.docs}
+            filled = compute_value(filled, req.question, docs, context_ids)
         valid = [c for c in filled.sources if c in context_ids]
         if len(valid) != len(filled.sources):
             logger.info("dropped cited ids not given to the model: %s", len(filled.sources) - len(valid))
@@ -356,8 +372,11 @@ def _details(filled, summary_title: str) -> dict:
                                          new_features=filled.new_features, balance=filled.balance,
                                          bug_fixes=filled.bug_fixes)}
     if isinstance(filled, ValueAnswer):
-        return {"value": ValueDetail(target=filled.target, value=filled.value, changed_in=filled.changed_in,
-                                     previous=filled.previous)}
+        return {"value": ValueDetail(
+            target=filled.target, kind=ValueKind(filled.kind), value=filled.value, changed_in=filled.changed_in,
+            previous=filled.previous,
+            history=[ValueChangeDetail(version=h.version, date=h.date, before=h.before, after=h.after)
+                     for h in filled.history])}
     if isinstance(filled, ScheduleAnswer):
         return {"schedule": ScheduleDetail(items=[
             ScheduleItemDetail(name=i.name, kind=ScheduleKind(i.kind), start=i.start, end=i.end, status=i.status)

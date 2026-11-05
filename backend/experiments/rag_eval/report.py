@@ -12,6 +12,7 @@ from pathlib import Path
 from statistics import median
 
 from app.qa.templates import QaIntent
+from app.qa.value import DocInfo
 from experiments.rag_eval.grading import final_text, grade, structured_content
 from experiments.rag_eval.run import DATASET, RECALL_KS, RESULTS
 
@@ -119,16 +120,21 @@ def render_index(timing: dict[str, dict]) -> str:
     return "\n".join(out) + "\n"
 
 
-def regrade(records: list[dict], questions: list[dict], titles: dict[str, str] | None = None) -> list[dict]:
+def regrade(records: list[dict], questions: list[dict], titles: dict[str, str] | None = None,
+            docs: dict[str, DocInfo] | None = None, corpora: dict[str, list[str]] | None = None) -> list[dict]:
     """기록 당시가 아니라 현재 채점 규칙으로 다시 판정한다(규칙을 고쳐도 실험을 다시 돌리지 않게).
 
-    v5·v6 기록(intent·raw 있음)은 모델 원문 JSON에서 채점용 문장을 다시 만든다.
+    v5~v7 기록(intent·raw 있음)은 모델 원문 JSON에서 채점용 문장을 다시 만든다.
     """
     answers = {q["id"]: q["answer"] for q in questions}
+    texts = {q["id"]: q["text"] for q in questions}
     out = []
     for r in records:
         if "raw" in r and "intent" in r:
-            r = {**r, "content": structured_content(QaIntent(r["intent"]), r["raw"], titles or {})}
+            # 넘긴 문서: B는 기록한 검색 결과, A는 그 구간 전체
+            allowed = set(r.get("context_doc_ids") or (corpora or {}).get(r["bucket"], [])) or None
+            r = {**r, "content": structured_content(QaIntent(r["intent"]), r["raw"], titles or {}, texts[r["qid"]],
+                                                    docs, allowed)}
         g = grade(r["content"], answers[r["qid"]])
         has_line = re.search(r"답\s*\**\s*[:：]", final_text(r["content"])) is not None
         out.append({**r, "correct": g.correct, "refused": g.refused, "answer_line": g.answer_line,
@@ -157,7 +163,9 @@ def main() -> None:
                for line in p.read_text(encoding="utf-8").splitlines() if line.strip()]
     data = json.loads(DATASET.read_text(encoding="utf-8"))
     titles = {d["id"]: d["title"] for d in data["docs"]}
-    records = relabel_cold(regrade(records, data["questions"], titles))
+    docs = {d["id"]: DocInfo(d["date"], d["title"]) for d in data["docs"]}
+    corpora = {b: c["doc_ids"] for b, c in data["corpora"].items()}
+    records = relabel_cold(regrade(records, data["questions"], titles, docs, corpora))
     text = render(summarize(records))
     timing_path = results / "index_timing.json"
     if timing_path.exists():

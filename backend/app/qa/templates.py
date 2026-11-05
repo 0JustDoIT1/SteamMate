@@ -8,7 +8,8 @@
 - 날짜로 정해지는 상태(진행 중·예정·종료)는 모델에 맡기지 않고 서버가 오늘(한국 날짜)과 비교해 정한다 —
   v5에서 이미 끝난 대회를 "진행 중"으로 답했다.
 이전 지시문 이력: v1 한 줄 답 → v2 설명형 요약 허용 → v3 분야별 예시 → v4 최신 업데이트 표시
-→ v5 유형별 칸 → v6 일정 여러 건·종류, 신규 콘텐츠 틀(DEVLOG 8단계).
+→ v5 유형별 칸 → v6 일정 여러 건·종류, 신규 콘텐츠 틀 → v7 값 질문은 변경 기록만 받고 서버가 계산(value.py)
+(DEVLOG 8단계).
 """
 
 import json
@@ -19,13 +20,14 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, ValidationError, field_validator
 
-PROMPT_VERSION = "v6"
+PROMPT_VERSION = "v7"
 REFUSAL = "근거 없음"
 # 지시와 다른 말로 거절하는 경우(7단계 스모크 실행에서 "정보 없음" 관측)
 REFUSALS = (REFUSAL, "정보 없음", "알 수 없", "찾을 수 없", "언급되지 않", "언급이 없")
 MAX_ITEMS = 2  # 업데이트 요약의 분야별 항목 수
 MAX_SCHEDULE_ITEMS = 3
 MAX_HIGHLIGHTS = 3
+MAX_HISTORY = 8
 # 한국은 서머타임이 없어 고정 오프셋으로 충분하다(Windows의 zoneinfo는 tzdata 패키지가 따로 필요)
 KST = timezone(timedelta(hours=9))
 MAX_FIELD_CHARS = 300
@@ -60,7 +62,9 @@ SINGLE_DAY_KINDS = frozenset({"RELEASE", "MAINTENANCE"})
 # 순서가 중요하다(값 → 일정 → 신규 콘텐츠 → 요약): "피해량은 언제 바뀌었나"는 값, "다음 DLC 언제 나와?"는 일정,
 # "새로 추가된 콘텐츠는?"은 신규 콘텐츠, "바뀐 점"은 요약
 _VALUE_WORDS = re.compile(
-    r"얼마|몇|수치|피해량|데미지|대미지|쿨다운|재사용|가격|확률|체력|공격력|방어력|damage|cooldown|price", re.IGNORECASE
+    # "바뀐 버전": "Siege 모드의 최대 인원이 바뀐 버전을 모두 쓰세요"도 값의 변경 기록으로 답한다(v7)
+    r"얼마|몇|수치|피해량|데미지|대미지|쿨다운|재사용|가격|확률|체력|공격력|방어력|바뀐\s*버전|damage|cooldown|price",
+    re.IGNORECASE
 )
 _SUMMARY_WORDS = re.compile(
     # "패치노트"만으로는 요약 질문이 아니다("2.4.1 패치노트의 알려진 문제는?" 같은 출처 지칭)
@@ -110,12 +114,16 @@ _INSTRUCTIONS = {
         "문서에 요약할 업데이트가 없으면 모든 목록을 비운다."
     ),
     QaIntent.VALUE: (
-        "질문은 어떤 대상의 값(수치·이름·버전·횟수 등)을 묻는다.\n"
+        # v7: 최신 값 고르기·횟수 세기·차이 계산은 서버가 한다(value.py). 모델은 문서에 적힌 변경만 옮긴다
+        "질문이 묻는 대상의 값이 문서에서 바뀌거나 정해진 기록을 모두 찾아 history에 옮겨 적는다. "
+        "계산·비교·최신 값 고르기는 하지 않는다(기록만 빠짐없이).\n"
         "- target: 질문이 묻는 대상(예: 'Arc Lance 피해량')\n"
-        "- value: 답이 되는 값. 질문이 특정 버전·문서를 말하면 그 기준, 아니면 그 값을 언급한 문서 중 날짜가 가장 늦은 "
-        "문서 기준의 현재 값. 횟수·차이·여러 버전을 물으면 그 답(예: '3', '2.3.0, 2.4.1'). 문서에 없으면 '근거 없음'\n"
-        "- changed_in: 그 값으로 바뀐 버전 또는 날짜(모르면 빈 문자열)\n"
-        "- previous: 바뀌기 전 값(모르면 빈 문자열)"
+        f"- history: 최대 {MAX_HISTORY}건. 문서마다 그 대상의 값이 나오면 한 건씩\n"
+        "  - doc: 그 문서의 ID(예: N012)\n"
+        "  - version: 그 문서 제목·본문에 적힌 버전(적혀 있지 않으면 빈 문자열)\n"
+        "  - before: 바뀌기 전 값(새로 추가됐거나 적혀 있지 않으면 빈 문자열)\n"
+        "  - after: 바뀐 뒤 값 또는 그 문서에 적힌 값. 단위는 문서 그대로(예: '20초', '800ms')\n"
+        "대상이 문서에 없으면 history를 비운다."
     ),
     QaIntent.SCHEDULE: (
         f"질문은 이벤트·시즌·출시·점검·테스트·할인 같은 일정을 묻는다. 질문에 맞는 일정을 최대 {MAX_SCHEDULE_ITEMS}건, "
@@ -153,10 +161,17 @@ _SCHEDULE_ITEM = {
     "required": ["name", "kind", "start", "end"],
 }
 
+_VALUE_CHANGE = {
+    "type": "object",
+    "properties": {"doc": _STR, "version": _STR, "before": _STR, "after": _STR},
+    "required": ["doc", "version", "before", "after"],
+}
+
 _SCHEMAS = {
     QaIntent.UPDATE_SUMMARY: {"version": _STR, "date": _STR, "new_features": _list(MAX_ITEMS),
                               "balance": _list(MAX_ITEMS), "bug_fixes": _list(MAX_ITEMS), "sources": _SOURCES},
-    QaIntent.VALUE: {"target": _STR, "value": _STR, "changed_in": _STR, "previous": _STR, "sources": _SOURCES},
+    QaIntent.VALUE: {"target": _STR, "history": {"type": "array", "items": _VALUE_CHANGE, "maxItems": MAX_HISTORY},
+                     "sources": _SOURCES},
     QaIntent.SCHEDULE: {"items": {"type": "array", "items": _SCHEDULE_ITEM, "maxItems": MAX_SCHEDULE_ITEMS},
                         "sources": _SOURCES},
     QaIntent.CONTENT: {"name": _STR, "form": {"type": "string", "enum": list(_FORMS)}, "release_date": _DATE,
@@ -202,12 +217,24 @@ class UpdateSummary(_Loose):
     sources: list[str] = []
 
 
+class ValueChange(_Loose):
+    doc: str = ""
+    version: str = ""
+    before: str = ""
+    after: str = ""
+    date: str = ""  # 서버가 문서 날짜로 채운다
+
+
 class ValueAnswer(_Loose):
     target: str = ""
+    history: list[ValueChange] = []
+    sources: list[str] = []
+    # 아래는 서버가 history와 질문으로 계산한다(value.compute_value). v5·v6 기록은 모델이 value를 직접 채웠다
+    kind: str = "CURRENT"
     value: str = ""
     changed_in: str = ""
     previous: str = ""
-    sources: list[str] = []
+    note: str = ""  # 화면 공용 문장의 괄호 설명(예: "12 → 13")
 
 
 class ScheduleItem(_Loose):
@@ -302,22 +329,36 @@ def _clean(text: str, titles: dict[str, str]) -> str:
     return _BRACKETED_ID.sub("", text).strip()[:MAX_FIELD_CHARS]
 
 
+# 모델이 "N115"를 "N0115"처럼 0을 더 붙여 적기도 한다(v7 재실험에서 값 기록이 통째로 버려진 원인)
+_LOOSE_DOC_ID = re.compile(r"\bN0*(\d{1,3})\b")
+
+
+def doc_ids(text: str) -> list[str]:
+    """글 속 문서 ID를 정규형(N + 세 자리)으로. 순서 유지, 중복 제거."""
+    return list(dict.fromkeys(f"N{int(n):03d}" for n in _LOOSE_DOC_ID.findall(text)))
+
+
 def _is_refusal(text: str) -> bool:
     return not text or any(p in text for p in REFUSALS)
 
 
 _LIST_LIMITS = {"highlights": MAX_HIGHLIGHTS}
 _ENUM_KEYS = {"kind", "form", "status"}
+# 모델에 요구하지 않고 서버가 채우는 칸(스키마 required에서 뺀다)
+SERVER_FIELDS = frozenset({"status", "kind", "value", "changed_in", "previous", "note"})  # 값 기록 안의 date도 서버가 채운다
 
 
 def _clean_fields(data: dict, titles: dict[str, str]) -> dict:
     out = {}
     for key, val in data.items():
         if key == "sources":
-            out[key] = list(dict.fromkeys(i for s in val for i in _DOC_ID.findall(s)))
+            out[key] = list(dict.fromkeys(i for s in val for i in doc_ids(s)))
         elif key in _ENUM_KEYS:
             out[key] = val
-        elif key == "items":
+        elif key == "doc":  # 문서 ID 칸은 제목으로 바꾸지 않는다
+            ids = doc_ids(val)
+            out[key] = ids[0] if ids else ""
+        elif isinstance(val, list) and val and isinstance(val[0], dict):  # 일정 items, 값 history
             out[key] = [_clean_fields(v, titles) for v in val]
         elif isinstance(val, list):
             out[key] = [c for v in val if (c := _clean(v, titles))][:_LIST_LIMITS.get(key, MAX_ITEMS)]
@@ -360,6 +401,8 @@ def render(filled: Filled) -> tuple[str, bool]:
     if isinstance(filled, ValueAnswer):
         if _is_refusal(filled.value):
             return REFUSAL, True
+        if filled.note:
+            return f"{filled.value} ({filled.note})", False
         detail = ""
         if filled.changed_in and filled.previous:
             detail = f" ({filled.changed_in}에서 {filled.previous} → {filled.value})"

@@ -31,6 +31,7 @@ from app.qa.templates import (
     json_schema,
     system_prompt,
 )
+from app.qa.value import DocInfo
 from experiments.rag_eval.build import OUT as DATASET
 from experiments.rag_eval.dataset import Doc, render_corpus
 from experiments.rag_eval.grading import grade, structured_content
@@ -118,9 +119,10 @@ def _timing(r: dict, wall: float) -> dict:
     }
 
 
-def _graded(r: dict, q: dict, context_ids: set[str], intent: QaIntent, titles: dict[str, str]) -> dict:
+def _graded(r: dict, q: dict, context_ids: set[str], intent: QaIntent, titles: dict[str, str],
+            docs: dict[str, DocInfo]) -> dict:
     raw = r["message"]["content"]
-    content = structured_content(intent, raw, titles)
+    content = structured_content(intent, raw, titles, q["text"], docs, context_ids)
     g = grade(content, q["answer"])
     return {
         "intent": intent.value,
@@ -183,6 +185,7 @@ def run_model(client: Client, data: dict, model: str, buckets: list[str], out: P
             marked = [replace(d, title=mark_latest(d.title)) if d.id == latest else d for d in docs]
             ids = {d.id for d in docs}
             titles = {d.id: d.title for d in docs}
+            doc_info = {d.id: DocInfo(d.date, d.title) for d in docs}
             corpora = {False: render_corpus(docs), True: render_corpus(marked)}  # 표시는 업데이트 요약 질문에만
             tokens = data["corpora"][bucket]["tokens"]
             base = {"model": model, "bucket": bucket, "corpus_tokens": tokens, "doc_count": len(docs)}
@@ -204,7 +207,7 @@ def run_model(client: Client, data: dict, model: str, buckets: list[str], out: P
                 _check_truncation(r, num_ctx)
                 write({**base, "mode": mode_a, "qid": q["id"], "kind": q["kind"], "num_ctx": num_ctx,
                        "cache": "cold" if cold else "reuse", **_timing(r, wall), "gpu": client.gpu_share(model),
-                       **_graded(r, q, ids, intent, titles)})
+                       **_graded(r, q, ids, intent, titles, doc_info)})
 
             # B: 청킹 → 임베딩 → Top-K
             pending = [q for q in data["questions"] if (bucket, "B", q["id"]) not in done]
@@ -237,7 +240,7 @@ def run_model(client: Client, data: dict, model: str, buckets: list[str], out: P
                        "top_k": TOP_K, "chunks": len(chunks), "index_s": index_s, "embed_s": round(embed_s, 3),
                        "context_doc_ids": sorted({c.doc_id for c in context}), "recall": recall,
                        **_timing(r, wall), "gpu": client.gpu_share(model),
-                       **_graded(r, q, {c.doc_id for c in context}, intent, titles)})
+                       **_graded(r, q, {c.doc_id for c in context}, intent, titles, doc_info)})
     return written
 
 

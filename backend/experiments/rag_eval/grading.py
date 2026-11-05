@@ -9,6 +9,7 @@ from dataclasses import dataclass
 
 from app.qa.prompt import answer_line, cited_ids, final_text
 from app.qa.templates import REFUSAL, REFUSALS, QaIntent, ValueAnswer, parse, render
+from app.qa.value import DocInfo, compute_value
 
 # Q34처럼 "그 버전에서 바뀌지 않았다"도 맞는 답 없음 질문용
 NO_CHANGE = ("변경 없음", "바뀌지 않", "변경되지 않", "변경이 없", "변동 없음")
@@ -35,12 +36,16 @@ def _squash(s: str) -> str:
     return re.sub(r"\s+", "", s).lower()
 
 
-def structured_content(intent: QaIntent, raw: str, titles: dict[str, str]) -> str:
-    """v5·v6 JSON 칸을 채점용 "답: … / 근거: …"로. 값 질문은 값 칸만 본다 —
-    화면 문장("50 (55 → 50)")의 이전 값까지 보면 틀린 답이 정답으로 잡힌다(v5 첫 집계에서 발견)."""
+def structured_content(intent: QaIntent, raw: str, titles: dict[str, str], question: str = "",
+                       docs: dict[str, DocInfo] | None = None, allowed: set[str] | None = None) -> str:
+    """v5~v7 JSON 칸을 채점용 "답: … / 근거: …"로. 값 질문은 값 칸만 본다 —
+    화면 문장("50 (55 → 50)")의 이전 값까지 보면 틀린 답이 정답으로 잡힌다(v5 첫 집계에서 발견).
+    v7 값 질문은 서비스와 같은 서버 계산(compute_value)을 거친다(docs = 문서 ID → 날짜·제목, allowed = 넘긴 문서)."""
     filled = parse(intent, _legacy_schedule(intent, raw), titles)
     if filled is None:
         return "답: (형식 오류)"
+    if isinstance(filled, ValueAnswer) and docs is not None:
+        filled = compute_value(filled, question, docs, allowed)
     text, refused = render(filled)
     if isinstance(filled, ValueAnswer) and not refused:
         text = filled.value

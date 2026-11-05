@@ -192,17 +192,54 @@ function SummaryView({ summary }: { summary: NonNullable<AskResponse["summary"]>
   );
 }
 
-function ValueView({ value }: { value: NonNullable<AskResponse["value"]> }) {
+type Value = NonNullable<AskResponse["value"]>;
+
+// 서버가 질문 꼴로 고른 계산 방식. 큰 숫자 옆에 무엇을 계산한 값인지 붙인다
+const VALUE_KIND_LABEL: Record<Value["kind"], string> = {
+  CURRENT: "지금 값",
+  AT_VERSION: "그 버전의 값",
+  FIRST: "처음 값",
+  WHEN: "바뀐 버전",
+  COUNT: "바뀐 횟수",
+  DIFF: "처음 대비 차이",
+  VERSIONS: "바뀐 버전 목록",
+};
+
+function ValueView({ value }: { value: Value }) {
+  const single = value.kind === "CURRENT" || value.kind === "AT_VERSION" || value.kind === "FIRST";
   return (
-    <div className="text-sm">
-      {value.target ? <p className="text-xs text-zinc-500">{value.target}</p> : null}
-      <p className="text-lg font-semibold">{value.value}</p>
-      {value.changedIn || value.previous ? (
+    <div className="space-y-2 text-sm">
+      <div>
         <p className="text-xs text-zinc-500">
-          {value.previous ? `${value.previous} → ${value.value}` : null}
-          {value.previous && value.changedIn ? " · " : null}
-          {value.changedIn ? `${value.changedIn}에 바뀜` : null}
+          {value.target ? `${value.target} · ` : null}
+          {VALUE_KIND_LABEL[value.kind]}
         </p>
+        <p className="text-lg font-semibold">
+          {value.value}
+          {value.kind === "COUNT" ? "번" : null}
+        </p>
+        {single && (value.changedIn || value.previous) ? (
+          <p className="text-xs text-zinc-500">
+            {value.previous ? `${value.previous} → ${value.value}` : null}
+            {value.previous && value.changedIn ? " · " : null}
+            {value.changedIn ? `${value.changedIn}에 바뀜` : null}
+          </p>
+        ) : null}
+      </div>
+      {value.history.length > 0 ? (
+        // 모델이 공지에서 옮긴 변경 기록(서버가 날짜순으로 정렬). 위 답은 이 기록으로 서버가 계산했다
+        <table className="w-full text-xs text-zinc-600 dark:text-zinc-400">
+          <caption className="text-left font-medium text-zinc-500">변경 기록</caption>
+          <tbody>
+            {value.history.map((h) => (
+              <tr key={`${h.date}-${h.version}-${h.before}-${h.after}`} className="border-t border-zinc-100 dark:border-zinc-800">
+                <td className="py-1 pr-2">{h.version || "-"}</td>
+                <td className="py-1 pr-2">{readableDate(h.date)}</td>
+                <td className="py-1">{h.before ? `${h.before} → ${h.after}` : `${h.after} (추가)`}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       ) : null}
     </div>
   );
