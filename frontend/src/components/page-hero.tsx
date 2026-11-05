@@ -15,9 +15,9 @@ export default function PageHero({ title, subtitle, children }: { title: ReactNo
       <div className="relative">
         <div className="flex items-center gap-3">
           <span aria-hidden className="h-8 w-1.5 shrink-0 rounded-full bg-gradient-to-b from-[#a68bff] to-accent-2" />
-          <h1 className="truncate text-3xl font-bold tracking-tight text-white">{title}</h1>
+          <h1 className="truncate text-2xl font-bold tracking-tight text-white sm:text-3xl">{title}</h1>
         </div>
-        {subtitle ? <p className="mt-2 pl-[18px] text-zinc-300">{subtitle}</p> : null}
+        {subtitle ? <p className="mt-2 pl-[18px] text-sm text-zinc-300 sm:text-base">{subtitle}</p> : null}
         {children}
       </div>
     </div>

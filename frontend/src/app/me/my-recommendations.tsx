@@ -8,6 +8,7 @@ import { type Recommendation, useMyRecommendations } from "@/features/library/qu
 import { formatDateTime, steamStoreUrl } from "@/lib/format";
 import { useHydrated } from "@/lib/use-hydrated";
 import { useAppStore } from "@/stores/app-store";
+import { CardGridSkeleton, LoadingStatus } from "@/components/skeleton";
 
 /** 보유 게임 추천(F3): 2시간 미만 플레이한 보유 게임 중 취향·덜 해본 정도로 TOP 3. */
 export default function OwnedRecommendations() {
@@ -26,14 +27,16 @@ export default function OwnedRecommendations() {
       <header className="flex flex-wrap items-center justify-between gap-2 px-5 pt-5">
         <div className="flex items-center gap-2.5">
           <Gamepad2 className="size-6 text-[#a68bff]" aria-hidden />
-          <h2 className="text-xl font-bold text-white">{collecting ? "이어서 하기" : "다음에 할 게임"}</h2>
+          <h2 className="text-lg font-bold text-white sm:text-xl">{collecting ? "이어서 하기" : "다음에 할 게임"}</h2>
           {data ? <span className="text-sm text-zinc-400">{MODE_LABEL[data.recommendationMode]}</span> : null}
         </div>
       </header>
 
       <div className="px-5 py-4">
         {query.isPending ? (
-          <p className="text-sm text-zinc-500">추천을 계산하는 중…</p>
+          <LoadingStatus label="추천을 계산하는 중…">
+            <CardGridSkeleton />
+          </LoadingStatus>
         ) : query.isError ? (
           <div role="alert" className="flex items-center gap-3 text-sm text-red-700 dark:text-red-300">
             <span>{query.error.message}</span>

@@ -9,6 +9,7 @@ import { type StoreRecommendation, useStoreRecommendations } from "@/features/li
 import { ApiError } from "@/lib/api/client";
 import { formatDateTime, formatPrice } from "@/lib/format";
 import { useAppStore } from "@/stores/app-store";
+import { LoadingStatus, RowListSkeleton } from "@/components/skeleton";
 
 /** 구매 추천(F4ⓒ): 대시보드 인기·할인·신작 목록 중 보유하지 않은 게임을 취향·인기로 추천. 정가 포함. */
 export default function StoreRecommendationsPanel() {
@@ -22,7 +23,7 @@ export default function StoreRecommendationsPanel() {
       <header className="flex flex-wrap items-center justify-between gap-2 px-5 pt-5">
         <div className="flex items-center gap-2.5">
           <Gamepad2 className="size-6 text-[#a68bff]" aria-hidden />
-          <h2 className="text-xl font-bold text-white">내 취향에 맞는 인기 게임</h2>
+          <h2 className="text-lg font-bold text-white sm:text-xl">내 취향에 맞는 인기 게임</h2>
           {data ? <span className="text-sm text-zinc-400">{MODE_LABEL[data.recommendationMode]}</span> : null}
         </div>
         <ToggleChip
@@ -35,7 +36,9 @@ export default function StoreRecommendationsPanel() {
 
       <div className="px-5 py-4">
         {query.isPending ? (
-          <p className="text-sm text-zinc-500">추천을 계산하는 중…</p>
+          <LoadingStatus label="추천을 계산하는 중…">
+            <RowListSkeleton count={6} />
+          </LoadingStatus>
         ) : query.isError ? (
           <StoreError error={query.error} onRetry={() => query.refetch()} />
         ) : data!.recommendations.length === 0 ? (
@@ -83,7 +86,8 @@ function StoreError({ error, onRetry }: { error: Error; onRetry: () => void }) {
 function StoreRow({ rank, rec }: { rank: number; rec: StoreRecommendation }) {
   const price = rec.price;
   return (
-    <li className="flex flex-wrap items-center gap-4 rounded-xl border border-zinc-800 bg-zinc-950/40 p-3 transition-colors hover:border-accent/50 md:flex-nowrap">
+    <li className="flex flex-wrap items-center gap-x-4 gap-y-3 rounded-xl border border-zinc-800 bg-zinc-950/40 p-3 transition-colors hover:border-accent/50 md:flex-nowrap">
+      <div className="flex min-w-0 basis-full flex-wrap items-center gap-3 md:flex-1 md:basis-auto md:flex-nowrap md:gap-4">
       <span
         className={`grid h-8 w-9 shrink-0 place-items-center rounded-lg text-sm font-bold tabular-nums ${
           rank === 1 ? "bg-gradient-to-br from-accent to-accent-2 text-white" : "border border-accent/40 bg-accent/10 text-zinc-100"
@@ -98,10 +102,10 @@ function StoreRow({ rank, rec }: { rank: number; rec: StoreRecommendation }) {
         )}
       </span>
       <a href={rec.storeUrl} target="_blank" rel="noopener noreferrer" className="shrink-0">
-        <GameImage src={rec.headerImage} className="aspect-[460/215] w-40 rounded-md" />
+        <GameImage src={rec.headerImage} className="aspect-[460/215] w-28 rounded-md sm:w-40" />
       </a>
-      <div className="min-w-0 flex-1 space-y-2">
-        <a href={rec.storeUrl} target="_blank" rel="noopener noreferrer" className="block truncate text-lg font-bold text-white hover:underline">
+      <div className="min-w-0 basis-full space-y-2 md:flex-1 md:basis-auto">
+        <a href={rec.storeUrl} target="_blank" rel="noopener noreferrer" className="block truncate font-bold text-white hover:underline sm:text-lg">
           {rec.name}
         </a>
         <div className="flex flex-wrap gap-1.5">
@@ -118,6 +122,7 @@ function StoreRow({ rank, rec }: { rank: number; rec: StoreRecommendation }) {
             </span>
           ) : null}
         </div>
+      </div>
       </div>
       <ul className="w-full space-y-1.5 text-sm md:w-72 md:shrink-0">
         {rec.reasons.map((r) => {
@@ -139,7 +144,7 @@ function StoreRow({ rank, rec }: { rank: number; rec: StoreRecommendation }) {
           );
         })}
       </ul>
-      <span className="w-16 shrink-0 border-zinc-800 text-center text-xl font-bold tabular-nums text-white md:border-l">
+      <span className="ml-auto w-16 shrink-0 border-zinc-800 text-center text-xl font-bold tabular-nums text-white md:ml-0 md:border-l">
         {Math.round(rec.score * 100)}점
       </span>
       <div className="w-28 shrink-0 text-right md:border-l md:border-zinc-800">

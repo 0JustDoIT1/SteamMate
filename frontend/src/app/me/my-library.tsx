@@ -1,8 +1,8 @@
 "use client";
 
-import { CalendarDays, Clock, Gamepad, Gamepad2, Newspaper, Play, type LucideIcon } from "lucide-react";
+import { CalendarDays, Clock, Gamepad, Gamepad2, Newspaper, Play, Search, type LucideIcon } from "lucide-react";
 import Link from "next/link";
-import type { ReactNode } from "react";
+import { type ReactNode, useState } from "react";
 import { Bar, BarChart, XAxis, YAxis } from "recharts";
 
 import GameImage from "@/components/game-image";
@@ -11,6 +11,7 @@ import { STEAM_LOGIN_URL, useMe } from "@/features/auth/queries";
 import { type Library, useMyLibrary } from "@/features/library/queries";
 import { ApiError } from "@/lib/api/client";
 import { useHydrated } from "@/lib/use-hydrated";
+import { LibrarySkeleton, LoadingStatus } from "@/components/skeleton";
 
 /*
  * 내 라이브러리 계열 화면(사이드바 메뉴마다 한 페이지)의 공용 부품.
@@ -29,7 +30,13 @@ export default function LibraryGate({ children }: { children: (library: Library)
   const { data: me, isPending: mePending } = useMe();
   const library = useMyLibrary(Boolean(me));
 
-  if (!hydrated || mePending) return <p className="mt-6 text-zinc-500">확인 중…</p>;
+  if (!hydrated || mePending) {
+    return (
+      <LoadingStatus label="확인 중…">
+        <LibrarySkeleton />
+      </LoadingStatus>
+    );
+  }
 
   if (!me) {
     return (
@@ -42,7 +49,13 @@ export default function LibraryGate({ children }: { children: (library: Library)
     );
   }
 
-  if (library.isPending) return <p className="mt-6 text-zinc-500">Steam에서 라이브러리를 불러오는 중…</p>;
+  if (library.isPending) {
+    return (
+      <LoadingStatus label="Steam에서 라이브러리를 불러오는 중…">
+        <LibrarySkeleton />
+      </LoadingStatus>
+    );
+  }
   if (library.isError) return <LibraryError error={library.error} onRetry={() => library.refetch()} />;
 
   return (
@@ -105,14 +118,14 @@ export function LibraryStats({ library }: { library: Library }) {
       {stats.map(([label, value, Icon], i) => (
         <div
           key={label}
-          className={`panel flex items-center gap-4 p-4 ${i % 2 === 1 ? "bg-[linear-gradient(135deg,rgb(76_52_160/0.45),rgb(20_25_56/0.8))]" : ""}`}
+          className={`panel flex items-center gap-3 p-3 sm:gap-4 sm:p-4 ${i % 2 === 1 ? "bg-[linear-gradient(135deg,rgb(76_52_160/0.45),rgb(20_25_56/0.8))]" : ""}`}
         >
-          <span className="grid size-10 shrink-0 place-items-center rounded-xl border border-accent-2/30 bg-accent-2/10 text-[#8fa6ff]">
+          <span className="hidden size-10 shrink-0 place-items-center rounded-xl border border-accent-2/30 sm:grid bg-accent-2/10 text-[#8fa6ff]">
             <Icon className="size-5" aria-hidden />
           </span>
           <div className="min-w-0">
             <dt className="text-xs text-zinc-400">{label}</dt>
-            <dd className="mt-0.5 whitespace-nowrap text-xl font-bold text-white xl:text-2xl">{value}</dd>
+            <dd className="mt-0.5 whitespace-nowrap text-lg font-bold text-white sm:text-xl xl:text-2xl">{value}</dd>
           </div>
         </div>
       ))}
@@ -120,23 +133,74 @@ export function LibraryStats({ library }: { library: Library }) {
   );
 }
 
+type GameSort = "PLAYTIME" | "RECENT" | "NAME";
+const SORT_LABEL: Record<GameSort, string> = { PLAYTIME: "플레이 시간순", RECENT: "최근 플레이순", NAME: "이름순" };
+
 export function GameList({ library }: { library: Library }) {
+  // 게임이 많은 라이브러리에서 찾기 쉽게: 이름 검색 + 정렬(브라우저 안에서만, 서버 요청 없음)
+  const [query, setQuery] = useState("");
+  const [sort, setSort] = useState<GameSort>("PLAYTIME");
+  const q = query.trim().toLowerCase();
+  const games = library.games
+    .filter((g) => !q || g.name.toLowerCase().includes(q))
+    .toSorted((a, b) =>
+      sort === "NAME"
+        ? a.name.localeCompare(b.name, "ko")
+        : sort === "RECENT"
+          ? (b.lastPlayedAt ?? "").localeCompare(a.lastPlayedAt ?? "")
+          : b.playtimeForever - a.playtimeForever,
+    );
   return (
     <section className="panel">
-      <header className="flex items-center gap-2 border-b border-zinc-800 px-5 py-4">
+      <header className="flex flex-wrap items-center gap-x-2 gap-y-3 border-b border-zinc-800 px-5 py-4">
         <Gamepad2 className="size-5 text-[#a68bff]" aria-hidden />
         <h2 className="text-lg font-semibold text-white">보유 게임 목록</h2>
         <span className="text-xs text-zinc-500">{library.gameCount}개 · 뉴스 버튼으로 게임별 공식 공지를 봅니다</span>
+        <div className="flex w-full gap-2 sm:ml-auto sm:w-auto">
+          <label className="relative min-w-0 flex-1 sm:w-56 sm:flex-none">
+            <span className="sr-only">게임 이름 검색</span>
+            <Search className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-zinc-500" aria-hidden />
+            <input
+              type="search"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="게임 이름 검색"
+              className="w-full rounded-lg border border-zinc-700 bg-zinc-950/60 py-1.5 pl-8 pr-2 text-sm placeholder:text-zinc-500 focus:border-accent focus:outline-none"
+            />
+          </label>
+          <label>
+            <span className="sr-only">정렬</span>
+            <select
+              value={sort}
+              onChange={(e) => setSort(e.target.value as GameSort)}
+              className="h-full rounded-lg border border-zinc-700 bg-zinc-950/60 px-2 py-1.5 text-sm text-zinc-200 focus:border-accent focus:outline-none"
+            >
+              {(Object.keys(SORT_LABEL) as GameSort[]).map((k) => (
+                <option key={k} value={k}>
+                  {SORT_LABEL[k]}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
       </header>
+      {games.length === 0 ? <p className="px-5 py-6 text-sm text-zinc-500">&lsquo;{query}&rsquo;와 일치하는 게임이 없습니다.</p> : null}
       <ul className="divide-y divide-zinc-800/80">
-        {library.games.map((game) => (
-          <li key={game.appid} className="flex items-center gap-4 px-5 py-2.5 hover:bg-white/[0.02]">
-            <GameImage src={game.headerImage} fallbackSrc={game.iconUrl} className="aspect-[460/215] w-24 rounded-md" />
-            <span className="flex-1 truncate font-medium text-zinc-100">{game.name}</span>
+        {games.map((game) => (
+          <li key={game.appid} className="flex items-center gap-3 px-4 py-2.5 hover:bg-white/[0.02] sm:gap-4 sm:px-5">
+            <GameImage src={game.headerImage} fallbackSrc={game.iconUrl} className="aspect-[460/215] w-20 shrink-0 rounded-md sm:w-24" />
+            <div className="min-w-0 flex-1">
+              <p className="truncate font-medium text-zinc-100">{game.name}</p>
+              {/* 작은 화면은 플레이 시간을 이름 아래에 */}
+              <p className="truncate text-xs text-zinc-400 sm:hidden">
+                {game.playtimeForever > 0 ? hours(game.playtimeForever) : "미플레이"}
+                {game.playtime2Weeks > 0 ? <span className="ml-2 text-emerald-400">최근 {hours(game.playtime2Weeks)}</span> : null}
+              </p>
+            </div>
             {game.playtime2Weeks > 0 && (
-              <span className="text-xs text-emerald-600">최근 {hours(game.playtime2Weeks)}</span>
+              <span className="hidden shrink-0 text-xs text-emerald-400 sm:inline">최근 {hours(game.playtime2Weeks)}</span>
             )}
-            <span className="w-20 text-right text-sm tabular-nums text-zinc-600 dark:text-zinc-400">
+            <span className="hidden w-20 shrink-0 text-right text-sm tabular-nums text-zinc-400 sm:inline">
               {game.playtimeForever > 0 ? hours(game.playtimeForever) : "미플레이"}
             </span>
             <Link href={`/news/${game.appid}`} className="btn-ghost shrink-0 px-3 py-1 text-xs">

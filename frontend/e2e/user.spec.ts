@@ -46,6 +46,14 @@ test("사이드바 메뉴마다 한 페이지: 구매 추천·할인·장르 취
 test("공식 뉴스: 보유 게임 목록에서 그 게임의 공지로 이동한다", async ({ page }) => {
   await page.goto("/news");
   const list = page.locator("section", { has: page.getByRole("heading", { name: "보유 게임 목록" }) });
+  // 이름 검색: 첫 게임 이름 일부로 찾으면 그 게임이 남고, 없는 이름이면 안내
+  const firstName = (await list.locator("li p.font-medium").first().innerText()).trim();
+  const search = list.getByRole("searchbox", { name: "게임 이름 검색" });
+  await search.fill(firstName.slice(0, 4));
+  await expect(list.locator("li").filter({ hasText: firstName })).toHaveCount(1);
+  await search.fill("zzzz-없는-게임");
+  await expect(list.getByText("일치하는 게임이 없습니다")).toBeVisible();
+  await search.fill("");
   await list.getByRole("link", { name: "뉴스" }).first().click();
   await expect(page).toHaveURL(/\/news\/\d+$/);
   await expect(page.getByRole("heading", { name: "공식 공지" })).toBeVisible();

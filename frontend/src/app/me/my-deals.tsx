@@ -5,6 +5,7 @@ import { Tag } from "lucide-react";
 import GameImage from "@/components/game-image";
 import { type DealItem, type Deals, useMyDeals } from "@/features/library/queries";
 import { formatDateTime, formatPrice } from "@/lib/format";
+import { LoadingStatus, RowListSkeleton } from "@/components/skeleton";
 
 const PRIVACY_SETTINGS_URL = "https://steamcommunity.com/my/edit/settings";
 
@@ -29,7 +30,11 @@ export default function MyDeals() {
       </header>
       <div className="grid gap-6 px-4 py-3 md:grid-cols-2">
         {query.isPending ? (
-          <p className="text-sm text-zinc-500">할인 정보를 불러오는 중…</p>
+          <div className="md:col-span-2">
+            <LoadingStatus label="할인 정보를 불러오는 중…">
+              <RowListSkeleton count={4} imageClass="w-24" />
+            </LoadingStatus>
+          </div>
         ) : query.isError ? (
           <div role="alert" className="flex items-center gap-3 text-sm text-red-700 dark:text-red-300">
             <span>{query.error.message}</span>

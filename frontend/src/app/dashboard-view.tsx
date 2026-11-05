@@ -18,6 +18,7 @@ import {
 import { ApiError } from "@/lib/api/client";
 import { formatCount, formatDateTime, formatPrice, steamStoreUrl } from "@/lib/format";
 import { useHydrated } from "@/lib/use-hydrated";
+import { LoadingStatus, RowListSkeleton, Skeleton } from "@/components/skeleton";
 
 const ROWS_COLLAPSED = 10;
 const OUT_OF_CHART_RANK = 101;
@@ -40,7 +41,14 @@ export default function DashboardView() {
   const dashboard = useDashboard(viewer);
 
   if (!hydrated || mePending || dashboard.isPending) {
-    return <p className="mt-10 text-zinc-500">인기 게임을 불러오는 중…</p>;
+    return (
+      <LoadingStatus label="인기 게임을 불러오는 중…">
+        <div className="mt-6 space-y-4">
+          <Skeleton className="h-10 w-full max-w-xl" />
+          <RowListSkeleton count={8} imageClass="w-24" />
+        </div>
+      </LoadingStatus>
+    );
   }
   if (dashboard.isError) {
     const notReady = dashboard.error instanceof ApiError && dashboard.error.code === "DATA_NOT_READY";
