@@ -26,7 +26,7 @@
 **다음 세션에서 이어서 할 일** (9단계 이후, 모든 단계 완료)
 1. 공개 배포를 하게 되면: 출시 게이트(뉴스 권리·비문서화 store 엔드포인트 약관 검토), 빠진 API 제한 3개(9단계 기록), 개발과 다른 비밀값
 2. 남은 한계 검토(선택): 본문이 링크뿐인 공지(Blue Archive), RAG에 안 걸린 공지의 값 기록, Full Context num_ctx 변동에 따른 모델 재로딩(미측정)
-3. 미검증: 실제 Steam 로그인 화면을 거친 운영 모드 콜백(쿠키 Secure), E2E의 CI 실행(로컬 전용 결정)
+3. 미검증: E2E의 CI 실행(로컬 전용 결정). 운영 모드 실제 로그인·쿠키 속성은 확인 완료
 - 운영 구성: `docker compose -f compose.prod.yml up --build -d` → http://localhost:8080 / E2E: `cd frontend && E2E_STEAMID=<17자리> npm run e2e` (운영 구성은 `E2E_BASE_URL=http://localhost:8080`)
 - 실행 전 확인: Ollama 서버(`http://127.0.0.1:11434`), 모델 `bonsai-2:9b`·`qwen3:4b`·`bge-m3`(D:\ollama\models)
 
@@ -711,3 +711,16 @@
 - 결과 [확인]: 개발 서버(3000, AI 켬) **10개 통과**, 운영 구성(8080, AI 꺼짐) **10개 통과**
 - 도중에 겪은 일: ① PC 재시작 전 브라우저가 앱과 무관한 빈 페이지에서도 `requestAnimationFrame`을 실행하지 못해(Edge 포함, GPU·vsync 옵션 무관) React Suspense가 "불러오는 중…"에서 멈춤 — 재시작 후 정상. 원인 미확인(모니터 절전 추정은 사용자 확인으로 틀림) ② 세션이 끊긴 뒤 남은 개발 서버의 컴파일 워커가 죽어 500 → 재시작 ③ 재시작 후 Ollama가 꺼져 질문이 "AI 답변 서버에 연결할 수 없습니다"(오류 안내는 정상 동작) ④ 테스트 버그: Next.js 경로 안내 요소도 alert 역할이라 질문 영역 안에서만 셈 ⑤ Playwright 보고서 폴더를 ESLint가 읽어 3천여 건 → 무시 목록에 추가
 - 미검증: 실제 Steam 로그인 화면을 거친 콜백(쿠키 Secure 속성 포함, 운영 모드), CI에서의 E2E(로컬 전용 결정), DoD의 "캐시 실패 시 부분 결과·통신 실패 시 오류 안내"는 pytest로만 확인(E2E에서 Steam 장애를 재현하지 않음), 외부 공개 배포(결정에 따라 하지 않음)
+
+### 9단계 이후 — 남은 작업 (2026-11-06)
+
+**Full Context 모델 재로딩 측정·수정** [확인]
+- 측정: Ollama에 num_ctx를 바꿔 보내면 매번 3~4초 재로딩(같으면 0.01초). 서비스에서 Blue Archive(Full Context, num_ctx 3167)와 Terraria(RAG, 12288)를 번갈아 물으면 BA 2.9 → 6.4초, Terraria 3~4 → 11.4초
+- 수정: Full Context도 RAG·번역과 같은 `qa_rag_num_ctx`(12288)로 고정(Full Context는 약 8k 이하라 필요 길이 최대 11,648). 메모리는 RAG가 이미 쓰는 만큼. 결과: 번갈아 물어도 3.2~3.6초, 답 동일. 테스트: 모든 요청이 같은 num_ctx, Full Context 잘림 → RAG 전환(호출 순서로 판정하도록 수정). 실험 실행기 A는 분량 기반 num_ctx 그대로(정확도 비교 조건 유지)
+
+**값 질문 RAG 조각 5 → 10 시험 (PRD v6.11, 되돌림)** [확인]
+- 이유: v7 100k B multi 25% — 흩어진 변경 기록을 Top-5가 놓침. 사용자 승인 조건 "좋아지지 않으면 되돌림"
+- v8 재실험(`results/prompt_v8/`): B 전체 92/81/75/61% → 89/83/69/64%, multi 75/62/50/25 → 75/75/38/38, latest 88/75/75/50 → 75/62/62/50, 입력 토큰 p50 약 1.7k → 3.4k. 뒤집힌 B 문제 9개(오름 4·내림 5) — 옛 공지 조각이 늘어 최신 기록을 놓침. A는 뒤집힌 문제 0개(실험 결정성 재확인)
+- 결정: **되돌림(조각 5개 유지)**, 결과는 기록으로 남김
+
+**운영 모드 실제 로그인** [확인]: 사용자가 http://localhost:8080 에서 Steam 로그인 → `/auth/steam/callback` 302(실제 Steam 서명 검증 통과), `/auth/me`·`/me/library` 200. `sm_session` 쿠키 HttpOnly ✓·Secure ✓·SameSite=Lax·Path=/ (브라우저 개발자 도구, 사용자 확인). 9단계 미검증 항목 해소
