@@ -3,6 +3,7 @@
 모델에게 "답: … / 근거: …" 형식을 요구하고 "답:" 줄만 채점한다(추론 문장 속 숫자에 속지 않게).
 """
 
+import json
 import re
 from dataclasses import dataclass
 
@@ -35,15 +36,29 @@ def _squash(s: str) -> str:
 
 
 def structured_content(intent: QaIntent, raw: str, titles: dict[str, str]) -> str:
-    """v5 JSON 칸을 채점용 "답: … / 근거: …"로. 값 질문은 값 칸만 본다 —
+    """v5·v6 JSON 칸을 채점용 "답: … / 근거: …"로. 값 질문은 값 칸만 본다 —
     화면 문장("50 (55 → 50)")의 이전 값까지 보면 틀린 답이 정답으로 잡힌다(v5 첫 집계에서 발견)."""
-    filled = parse(intent, raw, titles)
+    filled = parse(intent, _legacy_schedule(intent, raw), titles)
     if filled is None:
         return "답: (형식 오류)"
     text, refused = render(filled)
     if isinstance(filled, ValueAnswer) and not refused:
         text = filled.value
     return f"답: {REFUSAL if refused else text}\n근거: {', '.join(filled.sources)}"
+
+
+def _legacy_schedule(intent: QaIntent, raw: str) -> str:
+    """v5 일정 칸 {name, start, end}를 v6 {items: [...]}로 — v5 기록을 지금 규칙으로 다시 채점할 때."""
+    if intent is not QaIntent.SCHEDULE:
+        return raw
+    try:
+        data = json.loads(final_text(raw))
+    except ValueError:
+        return raw
+    if not isinstance(data, dict) or "items" in data or "name" not in data:
+        return raw
+    item = {k: data.get(k, "") for k in ("name", "start", "end")}
+    return json.dumps({"items": [item], "sources": data.get("sources", [])}, ensure_ascii=False)
 
 
 def grade(content: str, answer: list[list[str]]) -> Grade:

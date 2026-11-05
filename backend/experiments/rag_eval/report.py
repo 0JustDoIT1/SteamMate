@@ -122,7 +122,7 @@ def render_index(timing: dict[str, dict]) -> str:
 def regrade(records: list[dict], questions: list[dict], titles: dict[str, str] | None = None) -> list[dict]:
     """기록 당시가 아니라 현재 채점 규칙으로 다시 판정한다(규칙을 고쳐도 실험을 다시 돌리지 않게).
 
-    v5 기록(intent·raw 있음)은 모델 원문 JSON에서 채점용 문장을 다시 만든다.
+    v5·v6 기록(intent·raw 있음)은 모델 원문 JSON에서 채점용 문장을 다시 만든다.
     """
     answers = {q["id"]: q["answer"] for q in questions}
     out = []

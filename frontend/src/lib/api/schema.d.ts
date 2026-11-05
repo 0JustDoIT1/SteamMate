@@ -249,6 +249,7 @@ export interface components {
             summary: components["schemas"]["SummaryDetail"] | null;
             value: components["schemas"]["ValueDetail"] | null;
             schedule: components["schemas"]["ScheduleDetail"] | null;
+            content: components["schemas"]["ContentDetail"] | null;
             mode: components["schemas"]["QaMode"];
             /** Sources */
             sources: components["schemas"]["AskSource"][];
@@ -281,10 +282,31 @@ export interface components {
             url: string;
         };
         /**
+         * BuildChannel
+         * @enum {string}
+         */
+        BuildChannel: "STABLE" | "TEST";
+        /**
          * ChartSource
          * @enum {string}
          */
         ChartSource: "TOP_SELLERS" | "MOST_PLAYED" | "CONCURRENT" | "SPECIALS" | "NEW_RELEASES";
+        /** ContentDetail */
+        ContentDetail: {
+            /** Name */
+            name: string;
+            form: components["schemas"]["ContentForm"];
+            /** Releasedate */
+            releaseDate: string;
+            status: components["schemas"]["Status"];
+            /** Highlights */
+            highlights: string[];
+        };
+        /**
+         * ContentForm
+         * @enum {string}
+         */
+        ContentForm: "FREE_UPDATE" | "DLC" | "EXPANSION" | "OTHER";
         /** DashboardEntry */
         DashboardEntry: {
             /** Rank */
@@ -587,7 +609,7 @@ export interface components {
          * QaIntent
          * @enum {string}
          */
-        QaIntent: "UPDATE_SUMMARY" | "VALUE" | "SCHEDULE" | "OTHER";
+        QaIntent: "UPDATE_SUMMARY" | "VALUE" | "SCHEDULE" | "CONTENT" | "OTHER";
         /**
          * QaMode
          * @enum {string}
@@ -650,13 +672,35 @@ export interface components {
         };
         /** ScheduleDetail */
         ScheduleDetail: {
+            /** Items */
+            items: components["schemas"]["ScheduleItemDetail"][];
+            /**
+             * Nocurrent
+             * @default false
+             */
+            noCurrent: boolean;
+        };
+        /** ScheduleItemDetail */
+        ScheduleItemDetail: {
             /** Name */
             name: string;
+            kind: components["schemas"]["ScheduleKind"];
             /** Start */
             start: string;
             /** End */
             end: string;
+            status: components["schemas"]["Status"];
         };
+        /**
+         * ScheduleKind
+         * @enum {string}
+         */
+        ScheduleKind: "EVENT" | "RELEASE" | "MAINTENANCE" | "TEST" | "SALE";
+        /**
+         * Status
+         * @enum {string}
+         */
+        Status: "ONGOING" | "UPCOMING" | "ENDED" | "UNKNOWN";
         /** StoreRecommendation */
         StoreRecommendation: {
             /** Appid */
@@ -711,6 +755,8 @@ export interface components {
             version: string;
             /** Date */
             date: string;
+            scale: components["schemas"]["UpdateScale"];
+            build: components["schemas"]["BuildChannel"];
             /** Newfeatures */
             newFeatures: string[];
             /** Balance */
@@ -718,6 +764,11 @@ export interface components {
             /** Bugfixes */
             bugFixes: string[];
         };
+        /**
+         * UpdateScale
+         * @enum {string}
+         */
+        UpdateScale: "MAJOR" | "PATCH" | "HOTFIX";
         /** ValidationError */
         ValidationError: {
             /** Location */

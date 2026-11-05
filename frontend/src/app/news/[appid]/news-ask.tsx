@@ -129,6 +129,8 @@ function Answer({ data }: { data: AskResponse }) {
         <ValueView value={data.value} />
       ) : data.schedule ? (
         <ScheduleView schedule={data.schedule} />
+      ) : data.content ? (
+        <ContentView content={data.content} />
       ) : (
         <FreeText text={data.answer} />
       )}
@@ -168,11 +170,12 @@ function SummaryView({ summary }: { summary: NonNullable<AskResponse["summary"]>
   ];
   return (
     <div className="space-y-2 text-sm">
-      {summary.version || summary.date ? (
-        <p className="font-medium">
-          {summary.version} {summary.date ? <span className="text-zinc-500">({summary.date})</span> : null}
-        </p>
-      ) : null}
+      <p className="flex flex-wrap items-center gap-2 font-medium">
+        {summary.version}
+        {summary.date ? <span className="text-zinc-500">({readableDate(summary.date)})</span> : null}
+        <Badge>{SCALE_LABEL[summary.scale]}</Badge>
+        {summary.build === "TEST" ? <Badge tone="warn">테스트 빌드</Badge> : null}
+      </p>
       {sections
         .filter(([, items]) => items.length > 0)
         .map(([label, items]) => (
@@ -205,17 +208,100 @@ function ValueView({ value }: { value: NonNullable<AskResponse["value"]> }) {
   );
 }
 
+type Status = NonNullable<AskResponse["content"]>["status"];
+type Summary = NonNullable<AskResponse["summary"]>;
+type ScheduleItem = NonNullable<AskResponse["schedule"]>["items"][number];
+
+const SCALE_LABEL: Record<Summary["scale"], string> = { MAJOR: "대형 업데이트", PATCH: "패치", HOTFIX: "핫픽스" };
+const KIND_LABEL: Record<ScheduleItem["kind"], string> = {
+  EVENT: "이벤트",
+  RELEASE: "출시",
+  MAINTENANCE: "점검",
+  TEST: "테스트",
+  SALE: "할인",
+};
+const FORM_LABEL: Record<NonNullable<AskResponse["content"]>["form"], string> = {
+  FREE_UPDATE: "무료 업데이트",
+  DLC: "DLC",
+  EXPANSION: "확장",
+  OTHER: "콘텐츠",
+};
+// 상태는 서버가 오늘(한국 날짜)과 비교해 정한다. 출시는 "종료" 대신 "출시됨"으로 읽는다
+const STATUS_LABEL: Record<Status, string> = { ONGOING: "진행 중", UPCOMING: "예정", ENDED: "종료", UNKNOWN: "" };
+
+function statusLabel(status: Status, release: boolean): string {
+  if (release && status === "ENDED") return "출시됨";
+  if (release && status === "UPCOMING") return "출시 예정";
+  if (release && status === "ONGOING") return "오늘 출시";
+  return STATUS_LABEL[status];
+}
+
+function Badge({ children, tone = "plain" }: { children: React.ReactNode; tone?: "plain" | "live" | "warn" | "muted" }) {
+  const tones = {
+    plain: "border-zinc-300 text-zinc-600 dark:border-zinc-700 dark:text-zinc-400",
+    live: "border-emerald-600 text-emerald-700 dark:border-emerald-500 dark:text-emerald-400",
+    warn: "border-amber-600 text-amber-700 dark:border-amber-500 dark:text-amber-400",
+    muted: "border-zinc-200 text-zinc-400 dark:border-zinc-800 dark:text-zinc-500",
+  };
+  return <span className={`rounded-full border px-2 py-0.5 text-xs font-normal ${tones[tone]}`}>{children}</span>;
+}
+
+function StatusBadge({ status, release }: { status: Status; release: boolean }) {
+  const label = statusLabel(status, release);
+  if (!label) return null;
+  const tone = status === "ONGOING" ? "live" : status === "UPCOMING" ? "warn" : "muted";
+  return <Badge tone={tone}>{label}</Badge>;
+}
+
+function period(start: string, end: string, singleDay: boolean): string {
+  if (start && end) return `${readableDate(start)} ~ ${readableDate(end)}`;
+  if (end) return `${readableDate(end)}까지`;
+  // 출시일·점검은 하루짜리, 이벤트처럼 기간이 있는 일정은 시작일만 알려진 것(서버 SINGLE_DAY_KINDS와 같게)
+  return singleDay ? readableDate(start) : `${readableDate(start)}부터`;
+}
+
 function ScheduleView({ schedule }: { schedule: NonNullable<AskResponse["schedule"]> }) {
   return (
-    <div className="text-sm">
-      <p className="font-medium">{schedule.name}</p>
-      <p className="text-zinc-600 dark:text-zinc-400">
-        {schedule.start && schedule.end
-          ? `${readableDate(schedule.start)} ~ ${readableDate(schedule.end)}`
-          : schedule.end
-            ? `${readableDate(schedule.end)}까지`
-            : readableDate(schedule.start)}
+    <div className="space-y-2 text-sm">
+      {schedule.noCurrent ? (
+        <p className="text-zinc-500">진행 중이거나 예정된 일정을 공지에서 찾지 못했습니다. 최근 끝난 일정:</p>
+      ) : null}
+      <ul className="space-y-2">
+      {schedule.items.map((item) => (
+        <li key={`${item.name}-${item.start}-${item.end}`} className={item.status === "ENDED" ? "opacity-60" : ""}>
+          <p className="flex flex-wrap items-center gap-2 font-medium">
+            {item.name}
+            <Badge>{KIND_LABEL[item.kind]}</Badge>
+            <StatusBadge status={item.status} release={item.kind === "RELEASE"} />
+          </p>
+          <p className="text-zinc-600 dark:text-zinc-400">
+            {period(item.start, item.end, item.kind === "RELEASE" || item.kind === "MAINTENANCE")}
+          </p>
+        </li>
+      ))}
+      </ul>
+    </div>
+  );
+}
+
+function ContentView({ content }: { content: NonNullable<AskResponse["content"]> }) {
+  return (
+    <div className="space-y-1 text-sm">
+      <p className="flex flex-wrap items-center gap-2 font-medium">
+        {content.name}
+        <Badge>{FORM_LABEL[content.form]}</Badge>
+        <StatusBadge status={content.status} release />
       </p>
+      {content.releaseDate ? (
+        <p className="text-xs text-zinc-500">출시일 {readableDate(content.releaseDate)}</p>
+      ) : null}
+      {content.highlights.length > 0 ? (
+        <ul className="list-disc pl-5">
+          {content.highlights.map((h) => (
+            <li key={h}>{h}</li>
+          ))}
+        </ul>
+      ) : null}
     </div>
   );
 }

@@ -1,5 +1,6 @@
 """RAG용 청킹·In-Memory 벡터 검색(7단계 실험과 서비스 공용). 임베딩은 호출자가 넣는다(Ollama bge-m3)."""
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 
 import numpy as np
@@ -59,11 +60,14 @@ class VectorIndex:
 
 
 def context_chunks(index: VectorIndex, query: list[float], top_k: int,
-                   pinned_doc: str | None, pinned_k: int) -> list[Chunk]:
-    """전체 Top-K + 고정 문서(최신 업데이트)에서 질문과 가까운 청크 pinned_k개(겹치면 한 번만)."""
+                   pinned_doc: str | None, pinned_k: int, recent_docs: Sequence[str] = ()) -> list[Chunk]:
+    """전체 Top-K + 고정 문서(최신 업데이트)에서 질문과 가까운 청크 pinned_k개
+    + 최근 문서마다 질문과 가장 가까운 청크 1개(겹치면 한 번만)."""
     chunks = [c for c, _ in index.search(query, top_k)]
     if pinned_doc is not None:
         chunks += [c for c, _ in index.search(query, pinned_k, pinned_doc) if c not in chunks]
+    for doc_id in recent_docs:
+        chunks += [c for c, _ in index.search(query, 1, doc_id) if c not in chunks]
     return chunks
 
 

@@ -7,7 +7,7 @@
   짧은 요청을 끼워 캐시를 밀어내는 방식은 Ollama가 이전 프롬프트 캐시를 다시 써서 효과가 없었다(2026-11-04 확인).
 - --cold-only N: B 없이 구간마다 앞 N문제를 모두 첫 요청 조건으로 재서 <모델>_cold.jsonl에 쓴다(mode "A-cold").
 - 지연은 모델 로딩을 뺀 값(total - load)을 주로 쓰고, 로딩·벽시계 시간도 함께 남긴다.
-- 지시문 v5(templates.py): 질문 유형별 JSON 칸. 기록의 content는 칸을 문장으로 만든 "답: … / 근거: …"
+- 지시문 v6(templates.py): 질문 유형별 JSON 칸. 기록의 content는 칸을 문장으로 만든 "답: … / 근거: …"
   (v1~v4와 같은 채점·재채점 경로), 모델 원문 JSON은 raw.
 """
 
@@ -16,14 +16,16 @@ import json
 import re
 import time
 from dataclasses import replace
+from datetime import date, timedelta
 from pathlib import Path
 from typing import Protocol
 
 import httpx
 
-from app.qa.prompt import latest_update_id, mark_latest
+from app.qa.prompt import latest_update_id, mark_latest, recent_ids
 from app.qa.retrieval import VectorIndex, chunk_doc, context_chunks, recall_at_k
 from app.qa.templates import (
+    RECENCY_INTENTS,
     QaIntent,
     classify,
     json_schema,
@@ -40,6 +42,7 @@ MODELS = {"bonsai-2:9b": ["2k", "8k", "32k", "100k"], "qwen3:4b": ["2k", "8k", "
 NUM_PREDICT = 1024  # Thinking 모델(qwen3:4b)의 추론이 길어 넉넉히. 두 모델에 같은 값.
 TOP_K = 5
 PINNED_CHUNKS = 3  # 서비스와 같게: 업데이트 요약 질문에만 최신 업데이트 공지 청크를 더 넣는다
+RECENT_DOCS = 5  # 서비스 qa_recent_docs와 같게: 일정·콘텐츠 질문에만 최근 공지마다 청크 1개
 RECALL_KS = (1, 3, 5, 10)
 COLD_SAMPLES = 3
 B_NUM_CTX = 12_288  # 서비스 qa_rag_num_ctx와 같게
@@ -169,10 +172,14 @@ def run_model(client: Client, data: dict, model: str, buckets: list[str], out: P
             f.flush()
             written += 1
 
+        # 지시문의 "오늘": 실행 날짜에 따라 결과가 바뀌지 않게 데이터의 마지막 공지 다음 날로 고정
+        today = date.fromisoformat(max(d["date"] for d in data["docs"])) + timedelta(days=1)
         for bucket in buckets:
             docs = _docs(data, bucket)
             # 서비스와 같은 규칙으로 최신 업데이트 공지를 표시한다
-            latest = latest_update_id([(d.id, d.title) for d in sorted(docs, key=lambda d: d.date)])
+            by_date = [(d.id, d.title) for d in sorted(docs, key=lambda d: d.date)]
+            latest = latest_update_id(by_date)
+            recent = recent_ids(by_date, RECENT_DOCS)
             marked = [replace(d, title=mark_latest(d.title)) if d.id == latest else d for d in docs]
             ids = {d.id for d in docs}
             titles = {d.id: d.title for d in docs}
@@ -191,7 +198,7 @@ def run_model(client: Client, data: dict, model: str, buckets: list[str], out: P
                 intent = classify(q["text"])
                 corpus = corpora[intent is QaIntent.UPDATE_SUMMARY]
                 t = time.perf_counter()
-                r = client.chat(model, system_prompt(intent), f"문서:\n{corpus}\n\n질문: {q['text']}", num_ctx,
+                r = client.chat(model, system_prompt(intent, today), f"문서:\n{corpus}\n\n질문: {q['text']}", num_ctx,
                                 NUM_PREDICT, json_schema(intent))
                 wall = time.perf_counter() - t
                 _check_truncation(r, num_ctx)
@@ -215,12 +222,13 @@ def run_model(client: Client, data: dict, model: str, buckets: list[str], out: P
                 ranked = [c.doc_id for c, _ in hits]
                 intent = classify(q["text"])
                 summary = intent is QaIntent.UPDATE_SUMMARY
-                context = context_chunks(index, qvec, TOP_K, latest if summary else None, PINNED_CHUNKS)
+                context = context_chunks(index, qvec, TOP_K, latest if summary else None, PINNED_CHUNKS,
+                                         recent if intent in RECENCY_INTENTS else [])
                 texts = [c.text.replace(f"[{c.doc_id}] ", f"[{c.doc_id}] {mark_latest('').strip()} ", 1)
                          if summary and c.doc_id == latest else c.text for c in context]
                 user = "문서:\n" + "\n\n---\n\n".join(texts) + f"\n\n질문: {q['text']}"
                 t = time.perf_counter()
-                r = client.chat(model, system_prompt(intent), user, B_NUM_CTX, NUM_PREDICT, json_schema(intent))
+                r = client.chat(model, system_prompt(intent, today), user, B_NUM_CTX, NUM_PREDICT, json_schema(intent))
                 wall = time.perf_counter() - t
                 _check_truncation(r, B_NUM_CTX)
                 recall = ({str(k): recall_at_k(ranked, q["evidence"], k) for k in RECALL_KS}

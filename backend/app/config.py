@@ -75,7 +75,9 @@ class Settings(BaseSettings):
     qa_top_k: int = 5
     # 최신 업데이트 공지에서 질문과 가까운 청크를 이만큼 더 넣는다(RAG)
     qa_pinned_chunks: int = 3
-    # Top-K + 고정 청크(최대 8개 x 약 1,200자, 한국어는 토큰이 더 많음)가 잘리지 않게
+    # 일정·신규 콘텐츠 질문의 RAG에 최근 공지 몇 건의 청크(건마다 1개)를 더 넣을지(PRD v6.8)
+    qa_recent_docs: int = 5
+    # Top-K + 고정 청크 3개 또는 최근 공지 청크 5개(최대 10개 x 약 1,200자, 한국어는 토큰이 더 많음)가 잘리지 않게
     qa_rag_num_ctx: int = 12_288
     # 질문용 코퍼스(정리한 전문·임베딩) 메모리 캐시. 영구 저장하지 않는다.
     qa_cache_seconds: int = 600

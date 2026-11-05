@@ -153,6 +153,7 @@ def create_app(
         chars_per_token=settings.qa_chars_per_token,
         top_k=settings.qa_top_k,
         pinned_chunks=settings.qa_pinned_chunks,
+        recent_docs=settings.qa_recent_docs,
         rag_num_ctx=settings.qa_rag_num_ctx,
         num_predict=settings.qa_num_predict,
         cache_seconds=settings.qa_cache_seconds,
