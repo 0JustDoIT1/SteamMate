@@ -3,13 +3,16 @@
 사용: cd backend && python -m experiments.rag_eval.report
 """
 
+import argparse
 import json
 import math
 import re
 from collections import defaultdict
+from pathlib import Path
 from statistics import median
 
-from experiments.rag_eval.grading import final_text, grade
+from app.qa.templates import QaIntent
+from experiments.rag_eval.grading import final_text, grade, structured_content
 from experiments.rag_eval.run import DATASET, RECALL_KS, RESULTS
 
 KINDS = ["single", "latest", "multi", "title", "unanswerable"]
@@ -116,11 +119,16 @@ def render_index(timing: dict[str, dict]) -> str:
     return "\n".join(out) + "\n"
 
 
-def regrade(records: list[dict], questions: list[dict]) -> list[dict]:
-    """기록 당시가 아니라 현재 채점 규칙으로 다시 판정한다(규칙을 고쳐도 실험을 다시 돌리지 않게)."""
+def regrade(records: list[dict], questions: list[dict], titles: dict[str, str] | None = None) -> list[dict]:
+    """기록 당시가 아니라 현재 채점 규칙으로 다시 판정한다(규칙을 고쳐도 실험을 다시 돌리지 않게).
+
+    v5 기록(intent·raw 있음)은 모델 원문 JSON에서 채점용 문장을 다시 만든다.
+    """
     answers = {q["id"]: q["answer"] for q in questions}
     out = []
     for r in records:
+        if "raw" in r and "intent" in r:
+            r = {**r, "content": structured_content(QaIntent(r["intent"]), r["raw"], titles or {})}
         g = grade(r["content"], answers[r["qid"]])
         has_line = re.search(r"답\s*\**\s*[:：]", final_text(r["content"])) is not None
         out.append({**r, "correct": g.correct, "refused": g.refused, "answer_line": g.answer_line,
@@ -142,14 +150,19 @@ def relabel_cold(records: list[dict]) -> list[dict]:
 
 
 def main() -> None:
-    records = [json.loads(line) for p in sorted(RESULTS.glob("*.jsonl"))
+    p = argparse.ArgumentParser()
+    p.add_argument("--dir", type=Path, default=RESULTS, help="결과 폴더(지시문 버전별)")
+    results = p.parse_args().dir
+    records = [json.loads(line) for p in sorted(results.glob("*.jsonl"))
                for line in p.read_text(encoding="utf-8").splitlines() if line.strip()]
-    records = relabel_cold(regrade(records, json.loads(DATASET.read_text(encoding="utf-8"))["questions"]))
+    data = json.loads(DATASET.read_text(encoding="utf-8"))
+    titles = {d["id"]: d["title"] for d in data["docs"]}
+    records = relabel_cold(regrade(records, data["questions"], titles))
     text = render(summarize(records))
-    timing_path = RESULTS / "index_timing.json"
+    timing_path = results / "index_timing.json"
     if timing_path.exists():
         text += render_index(json.loads(timing_path.read_text(encoding="utf-8")))
-    path = RESULTS / "report.md"
+    path = results / "report.md"
     path.write_text(text, encoding="utf-8")
     print(f"{len(records)}건 → {path}")
 

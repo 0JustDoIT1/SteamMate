@@ -7,21 +7,31 @@
   짧은 요청을 끼워 캐시를 밀어내는 방식은 Ollama가 이전 프롬프트 캐시를 다시 써서 효과가 없었다(2026-11-04 확인).
 - --cold-only N: B 없이 구간마다 앞 N문제를 모두 첫 요청 조건으로 재서 <모델>_cold.jsonl에 쓴다(mode "A-cold").
 - 지연은 모델 로딩을 뺀 값(total - load)을 주로 쓰고, 로딩·벽시계 시간도 함께 남긴다.
+- 지시문 v5(templates.py): 질문 유형별 JSON 칸. 기록의 content는 칸을 문장으로 만든 "답: … / 근거: …"
+  (v1~v4와 같은 채점·재채점 경로), 모델 원문 JSON은 raw.
 """
 
 import argparse
 import json
 import re
 import time
+from dataclasses import replace
 from pathlib import Path
 from typing import Protocol
 
 import httpx
 
+from app.qa.prompt import latest_update_id, mark_latest
+from app.qa.retrieval import VectorIndex, chunk_doc, context_chunks, recall_at_k
+from app.qa.templates import (
+    QaIntent,
+    classify,
+    json_schema,
+    system_prompt,
+)
 from experiments.rag_eval.build import OUT as DATASET
 from experiments.rag_eval.dataset import Doc, render_corpus
-from experiments.rag_eval.grading import grade
-from experiments.rag_eval.retrieval import VectorIndex, chunk_doc, recall_at_k
+from experiments.rag_eval.grading import grade, structured_content
 
 OLLAMA = "http://127.0.0.1:11434"
 EMBED_MODEL = "bge-m3"
@@ -29,19 +39,15 @@ RESULTS = Path(__file__).parent / "results"
 MODELS = {"bonsai-2:9b": ["2k", "8k", "32k", "100k"], "qwen3:4b": ["2k", "8k", "32k"]}  # PRD v6.5
 NUM_PREDICT = 1024  # Thinking 모델(qwen3:4b)의 추론이 길어 넉넉히. 두 모델에 같은 값.
 TOP_K = 5
+PINNED_CHUNKS = 3  # 서비스와 같게: 업데이트 요약 질문에만 최신 업데이트 공지 청크를 더 넣는다
 RECALL_KS = (1, 3, 5, 10)
 COLD_SAMPLES = 3
-B_NUM_CTX = 8_192
-SYSTEM = (
-    "너는 게임 뉴스 질의응답 도우미다. 아래 제공된 문서만 근거로 한국어로 답한다.\n"
-    "문서에 없는 내용은 추측하지 말고 답을 '근거 없음'이라고 쓴다.\n"
-    "문서마다 [N000] 형식의 ID와 날짜가 있다. 최신 값을 묻는 질문은 날짜가 가장 늦은 문서를 기준으로 한다.\n"
-    "출력 형식(두 줄):\n답: <짧은 답>\n근거: <답에 사용한 문서 ID, 쉼표로 구분>"
-)
+B_NUM_CTX = 12_288  # 서비스 qa_rag_num_ctx와 같게
 
 
 class Client(Protocol):
-    def chat(self, model: str, system: str, user: str, num_ctx: int, num_predict: int) -> dict: ...
+    def chat(self, model: str, system: str, user: str, num_ctx: int, num_predict: int,
+             schema: dict | None = None) -> dict: ...
     def embed(self, texts: list[str]) -> list[list[float]]: ...
     def gpu_share(self, model: str) -> str | None: ...
     def unload(self, model: str) -> None: ...
@@ -51,12 +57,16 @@ class OllamaClient:
     def __init__(self, http: httpx.Client):
         self.http = http
 
-    def chat(self, model: str, system: str, user: str, num_ctx: int, num_predict: int) -> dict:
+    def chat(self, model: str, system: str, user: str, num_ctx: int, num_predict: int,
+             schema: dict | None = None) -> dict:
         messages = ([{"role": "system", "content": system}] if system else []) + [{"role": "user", "content": user}]
-        r = self.http.post("/api/chat", json={
+        payload = {
             "model": model, "messages": messages, "stream": False, "think": False, "keep_alive": "10m",
             "options": {"num_ctx": num_ctx, "num_predict": num_predict, "temperature": 0, "seed": 1},
-        })
+        }
+        if schema is not None:
+            payload["format"] = schema
+        r = self.http.post("/api/chat", json=payload)
         r.raise_for_status()
         return r.json()
 
@@ -105,10 +115,13 @@ def _timing(r: dict, wall: float) -> dict:
     }
 
 
-def _graded(r: dict, q: dict, context_ids: set[str]) -> dict:
-    content = r["message"]["content"]
+def _graded(r: dict, q: dict, context_ids: set[str], intent: QaIntent, titles: dict[str, str]) -> dict:
+    raw = r["message"]["content"]
+    content = structured_content(intent, raw, titles)
     g = grade(content, q["answer"])
     return {
+        "intent": intent.value,
+        "raw": raw,
         "content": content,
         "answer_line": g.answer_line,
         "correct": g.correct,
@@ -158,8 +171,12 @@ def run_model(client: Client, data: dict, model: str, buckets: list[str], out: P
 
         for bucket in buckets:
             docs = _docs(data, bucket)
+            # 서비스와 같은 규칙으로 최신 업데이트 공지를 표시한다
+            latest = latest_update_id([(d.id, d.title) for d in sorted(docs, key=lambda d: d.date)])
+            marked = [replace(d, title=mark_latest(d.title)) if d.id == latest else d for d in docs]
             ids = {d.id for d in docs}
-            corpus = render_corpus(docs)
+            titles = {d.id: d.title for d in docs}
+            corpora = {False: render_corpus(docs), True: render_corpus(marked)}  # 표시는 업데이트 요약 질문에만
             tokens = data["corpora"][bucket]["tokens"]
             base = {"model": model, "bucket": bucket, "corpus_tokens": tokens, "doc_count": len(docs)}
 
@@ -171,13 +188,16 @@ def run_model(client: Client, data: dict, model: str, buckets: list[str], out: P
                 cold = bool(cold_only) or i < COLD_SAMPLES
                 if cold:
                     client.unload(model)
+                intent = classify(q["text"])
+                corpus = corpora[intent is QaIntent.UPDATE_SUMMARY]
                 t = time.perf_counter()
-                r = client.chat(model, SYSTEM, f"문서:\n{corpus}\n\n질문: {q['text']}", num_ctx, NUM_PREDICT)
+                r = client.chat(model, system_prompt(intent), f"문서:\n{corpus}\n\n질문: {q['text']}", num_ctx,
+                                NUM_PREDICT, json_schema(intent))
                 wall = time.perf_counter() - t
                 _check_truncation(r, num_ctx)
                 write({**base, "mode": mode_a, "qid": q["id"], "kind": q["kind"], "num_ctx": num_ctx,
                        "cache": "cold" if cold else "reuse", **_timing(r, wall), "gpu": client.gpu_share(model),
-                       **_graded(r, q, ids)})
+                       **_graded(r, q, ids, intent, titles)})
 
             # B: 청킹 → 임베딩 → Top-K
             pending = [q for q in data["questions"] if (bucket, "B", q["id"]) not in done]
@@ -193,10 +213,14 @@ def run_model(client: Client, data: dict, model: str, buckets: list[str], out: P
                 hits = index.search(qvec, max(RECALL_KS))
                 embed_s = time.perf_counter() - t
                 ranked = [c.doc_id for c, _ in hits]
-                context = [c for c, _ in hits[:TOP_K]]
-                user = "문서:\n" + "\n\n---\n\n".join(c.text for c in context) + f"\n\n질문: {q['text']}"
+                intent = classify(q["text"])
+                summary = intent is QaIntent.UPDATE_SUMMARY
+                context = context_chunks(index, qvec, TOP_K, latest if summary else None, PINNED_CHUNKS)
+                texts = [c.text.replace(f"[{c.doc_id}] ", f"[{c.doc_id}] {mark_latest('').strip()} ", 1)
+                         if summary and c.doc_id == latest else c.text for c in context]
+                user = "문서:\n" + "\n\n---\n\n".join(texts) + f"\n\n질문: {q['text']}"
                 t = time.perf_counter()
-                r = client.chat(model, SYSTEM, user, B_NUM_CTX, NUM_PREDICT)
+                r = client.chat(model, system_prompt(intent), user, B_NUM_CTX, NUM_PREDICT, json_schema(intent))
                 wall = time.perf_counter() - t
                 _check_truncation(r, B_NUM_CTX)
                 recall = ({str(k): recall_at_k(ranked, q["evidence"], k) for k in RECALL_KS}
@@ -205,7 +229,7 @@ def run_model(client: Client, data: dict, model: str, buckets: list[str], out: P
                        "top_k": TOP_K, "chunks": len(chunks), "index_s": index_s, "embed_s": round(embed_s, 3),
                        "context_doc_ids": sorted({c.doc_id for c in context}), "recall": recall,
                        **_timing(r, wall), "gpu": client.gpu_share(model),
-                       **_graded(r, q, {c.doc_id for c in context})})
+                       **_graded(r, q, {c.doc_id for c in context}, intent, titles)})
     return written
 
 
@@ -235,6 +259,7 @@ def main() -> None:
     p.add_argument("--buckets", nargs="+", help="생략하면 모델별 기본 구간")
     p.add_argument("--cold-only", type=int, metavar="N", help="A의 앞 N문제를 모두 첫 요청 조건으로만 잰다")
     p.add_argument("--index-only", action="store_true", help="색인 시간만 재서 results/index_timing.json에 쓴다")
+    p.add_argument("--out-dir", type=Path, default=RESULTS, help="결과 폴더(지시문 버전별로 나눌 때)")
     args = p.parse_args()
     data = json.loads(DATASET.read_text(encoding="utf-8"))
     models = [args.model] if args.model else list(MODELS)
@@ -242,14 +267,14 @@ def main() -> None:
         client = OllamaClient(http)
         if args.index_only:
             timing = measure_index(client, data)
-            RESULTS.mkdir(parents=True, exist_ok=True)
-            (RESULTS / "index_timing.json").write_text(json.dumps(timing, indent=1) + "\n", encoding="utf-8")
+            args.out_dir.mkdir(parents=True, exist_ok=True)
+            (args.out_dir / "index_timing.json").write_text(json.dumps(timing, indent=1) + "\n", encoding="utf-8")
             print(timing)
             return
         for model in models:
             buckets = args.buckets or MODELS[model]
             suffix = "_cold" if args.cold_only else ""
-            out = RESULTS / f"{re.sub(r'[^A-Za-z0-9.-]', '_', model)}{suffix}.jsonl"
+            out = args.out_dir / f"{re.sub(r'[^A-Za-z0-9.-]', '_', model)}{suffix}.jsonl"
             n = run_model(client, data, model, buckets, out, args.cold_only)
             print(f"{model}: {n}건 기록 → {out}", flush=True)
 

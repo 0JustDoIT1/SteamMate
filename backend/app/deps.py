@@ -12,6 +12,7 @@ from app.metadata.service import MetadataLookup
 from app.news import NewsService
 from app.owned_cache import OwnedGamesCache
 from app.prices import PriceLookup
+from app.qa.service import NewsQaService
 from app.steam.web_api import SteamWebApi
 
 
@@ -41,6 +42,10 @@ def get_prices(request: Request) -> PriceLookup:
 
 def get_news(request: Request) -> NewsService:
     return request.app.state.news
+
+
+def get_qa(request: Request) -> NewsQaService:
+    return request.app.state.qa
 
 
 def get_dashboard(request: Request) -> DashboardService:

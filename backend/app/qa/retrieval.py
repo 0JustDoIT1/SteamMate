@@ -1,4 +1,4 @@
-"""B(RAG)용 청킹·In-Memory 벡터 검색. 임베딩은 호출자가 넣는다(Ollama bge-m3)."""
+"""RAG용 청킹·In-Memory 벡터 검색(7단계 실험과 서비스 공용). 임베딩은 호출자가 넣는다(Ollama bge-m3)."""
 
 from dataclasses import dataclass
 
@@ -49,11 +49,22 @@ class VectorIndex:
         self.chunks = chunks
         self.matrix = _normalize(np.asarray(vectors, dtype=np.float32))
 
-    def search(self, query: list[float], k: int) -> list[tuple[Chunk, float]]:
+    def search(self, query: list[float], k: int, doc_id: str | None = None) -> list[tuple[Chunk, float]]:
+        """doc_id를 주면 그 문서의 청크 안에서만 찾는다."""
         q = _normalize(np.asarray([query], dtype=np.float32))[0]
         scores = self.matrix @ q
-        top = np.argsort(-scores, kind="stable")[:k]
-        return [(self.chunks[i], float(scores[i])) for i in top]
+        order = np.argsort(-scores, kind="stable")
+        picked = [i for i in order if doc_id is None or self.chunks[i].doc_id == doc_id][:k]
+        return [(self.chunks[i], float(scores[i])) for i in picked]
+
+
+def context_chunks(index: VectorIndex, query: list[float], top_k: int,
+                   pinned_doc: str | None, pinned_k: int) -> list[Chunk]:
+    """전체 Top-K + 고정 문서(최신 업데이트)에서 질문과 가까운 청크 pinned_k개(겹치면 한 번만)."""
+    chunks = [c for c, _ in index.search(query, top_k)]
+    if pinned_doc is not None:
+        chunks += [c for c, _ in index.search(query, pinned_k, pinned_doc) if c not in chunks]
+    return chunks
 
 
 def _normalize(m: np.ndarray) -> np.ndarray:

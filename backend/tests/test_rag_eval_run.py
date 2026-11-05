@@ -4,14 +4,14 @@ import json
 
 import pytest
 
-from experiments.rag_eval import report, run
-from experiments.rag_eval.grading import grade
-from experiments.rag_eval.retrieval import (
+from app.qa.retrieval import (
     CHUNK_CHARS,
     VectorIndex,
     chunk_doc,
     recall_at_k,
 )
+from experiments.rag_eval import report, run
+from experiments.rag_eval.grading import grade
 
 # ---------------------------------------------------------------- 채점
 
@@ -120,9 +120,13 @@ class FakeClient:
         self.unloads = 0
         self.prompt_tokens = prompt_tokens
 
-    def chat(self, model, system, user, num_ctx, num_predict):
+    def chat(self, model, system, user, num_ctx, num_predict, schema=None):
         self.chats.append((user, num_ctx, num_predict))
-        return {"message": {"content": "답: 48\n근거: N001"}, "prompt_eval_count": self.prompt_tokens,
+        # 유형별 JSON 칸을 채운다: 답 칸은 "48", 출처는 N001
+        props = (schema or {}).get("properties", {})
+        filled = {k: ["N001"] if k == "sources" else [] if v["type"] == "array" else
+                  "48" if k in ("value", "answer") else "" for k, v in props.items()}
+        return {"message": {"content": json.dumps(filled)}, "prompt_eval_count": self.prompt_tokens,
                 "eval_count": 5, "total_duration": 2_000_000_000, "load_duration": 500_000_000,
                 "prompt_eval_duration": 1_000_000_000, "eval_duration": 400_000_000, "done_reason": "stop"}
 
@@ -232,3 +236,16 @@ def test_relabel_cold_keeps_only_first_per_bucket():
 def test_report_counts_missing_answer_line():
     recs = report.regrade([{"qid": "Q01", "content": "Okay, let's think... 48"}], DATA["questions"])
     assert recs[0]["has_answer_line"] is False and recs[0]["correct"] is True  # 관대 채점의 한계를 열로 드러낸다
+
+
+def test_value_answers_graded_on_value_field_only():
+    """화면 문장 "50 (55 → 50)"의 이전 값 55로 정답 처리되면 안 된다(v5 첫 집계에서 발견)."""
+    from app.qa.templates import QaIntent
+    from experiments.rag_eval.grading import structured_content
+
+    raw = json.dumps({"target": "출시 피해량", "value": "50", "changed_in": "2.4.1", "previous": "55",
+                      "sources": ["N001"]})
+    content = structured_content(QaIntent.VALUE, raw, {})
+    assert content == "답: 50\n근거: N001"
+    assert not grade(content, [["55"]]).correct and grade(content, [["50"]]).correct
+    assert structured_content(QaIntent.VALUE, '{"value": "5', {}) == "답: (형식 오류)"

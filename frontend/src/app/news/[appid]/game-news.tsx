@@ -7,6 +7,8 @@ import { type NewsItem, useGameNews } from "@/features/news/queries";
 import { ApiError } from "@/lib/api/client";
 import { formatDateTime, steamStoreUrl } from "@/lib/format";
 
+import NewsAsk from "./news-ask";
+
 export default function GameNews({ appid }: { appid: number }) {
   const query = useGameNews(appid);
   const pages = query.data?.pages ?? [];
@@ -31,6 +33,8 @@ export default function GameNews({ appid }: { appid: number }) {
           </a>
         </div>
       </div>
+
+      {pages[0] ? <NewsAsk appid={appid} enabled={pages[0].askEnabled} /> : null}
 
       <section className="rounded-lg border border-zinc-200 dark:border-zinc-800">
         <header className="flex flex-wrap items-center justify-between gap-2 border-b border-zinc-200 px-4 py-3 dark:border-zinc-800">

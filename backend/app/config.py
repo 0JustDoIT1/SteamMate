@@ -60,6 +60,26 @@ class Settings(BaseSettings):
     # 뉴스 발췌 메모리 캐시(본문 전문은 캐시하지 않음)
     news_cache_seconds: int = 600
 
+    # 뉴스 AI 질문(F6 R2, PRD v6.7). 권리 확인 전 공개 배포는 OFF — 로컬 .env에서만 켠다.
+    news_ai_enabled: bool = False
+    ollama_url: str = "http://127.0.0.1:11434"
+    qa_model: str = "bonsai-2:9b"
+    qa_embed_model: str = "bge-m3"
+    qa_timeout_seconds: float = 120.0
+    qa_num_predict: int = 1024  # 7단계 실험과 같은 값
+    qa_max_docs: int = 50
+    # 정제 후 코퍼스가 이 토큰 수 이하면 Full Context, 넘으면 RAG(7단계 실험, bonsai-2:9b 기준)
+    qa_full_context_max_tokens: int = 8000
+    # 토큰 어림값. 실험 데이터는 3.25~3.6자/토큰 → 3으로 잡아 토큰을 넉넉히(Full Context를 덜) 센다.
+    qa_chars_per_token: float = 3.0
+    qa_top_k: int = 5
+    # 최신 업데이트 공지에서 질문과 가까운 청크를 이만큼 더 넣는다(RAG)
+    qa_pinned_chunks: int = 3
+    # Top-K + 고정 청크(최대 8개 x 약 1,200자, 한국어는 토큰이 더 많음)가 잘리지 않게
+    qa_rag_num_ctx: int = 12_288
+    # 질문용 코퍼스(정리한 전문·임베딩) 메모리 캐시. 영구 저장하지 않는다.
+    qa_cache_seconds: int = 600
+
     @property
     def cookie_secure(self) -> bool:
         return self.app_env not in ("local", "test")

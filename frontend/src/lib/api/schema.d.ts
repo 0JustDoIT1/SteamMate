@@ -177,6 +177,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/steam/news/ask": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Ask News */
+        post: operations["ask_news_steam_news_ask_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/health": {
         parameters: {
             query?: never;
@@ -215,6 +232,54 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** AskRequest */
+        AskRequest: {
+            /** Appid */
+            appid: number;
+            /** Question */
+            question: string;
+        };
+        /** AskResponse */
+        AskResponse: {
+            /** Answer */
+            answer: string;
+            /** Refused */
+            refused: boolean;
+            intent: components["schemas"]["QaIntent"];
+            summary: components["schemas"]["SummaryDetail"] | null;
+            value: components["schemas"]["ValueDetail"] | null;
+            schedule: components["schemas"]["ScheduleDetail"] | null;
+            mode: components["schemas"]["QaMode"];
+            /** Sources */
+            sources: components["schemas"]["AskSource"][];
+            dateRange: components["schemas"]["DateRange"] | null;
+            latestUpdate: components["schemas"]["AskSource"] | null;
+            /** Doccount */
+            docCount: number;
+            /** Inputtokens */
+            inputTokens: number;
+            /** Model */
+            model: string;
+            /**
+             * Answeredat
+             * Format: date-time
+             */
+            answeredAt: string;
+        };
+        /** AskSource */
+        AskSource: {
+            /** Gid */
+            gid: string;
+            /** Title */
+            title: string;
+            /**
+             * Publishedat
+             * Format: date-time
+             */
+            publishedAt: string;
+            /** Url */
+            url: string;
+        };
         /**
          * ChartSource
          * @enum {string}
@@ -285,6 +350,19 @@ export interface components {
             periods: components["schemas"]["PeriodRanking"][];
             /** Trendtimes */
             trendTimes: string[];
+        };
+        /** DateRange */
+        DateRange: {
+            /**
+             * From
+             * Format: date
+             */
+            from: string;
+            /**
+             * To
+             * Format: date
+             */
+            to: string;
         };
         /** DealItem */
         DealItem: {
@@ -470,6 +548,11 @@ export interface components {
              * Format: date-time
              */
             fetchedAt: string;
+            /**
+             * Askenabled
+             * @default false
+             */
+            askEnabled: boolean;
         };
         /**
          * Period
@@ -500,6 +583,16 @@ export interface components {
             /** Discountpercent */
             discountPercent: number;
         };
+        /**
+         * QaIntent
+         * @enum {string}
+         */
+        QaIntent: "UPDATE_SUMMARY" | "VALUE" | "SCHEDULE" | "OTHER";
+        /**
+         * QaMode
+         * @enum {string}
+         */
+        QaMode: "FULL_CONTEXT" | "RAG";
         /** Reason */
         Reason: {
             factor: components["schemas"]["ReasonFactor"];
@@ -555,6 +648,15 @@ export interface components {
              */
             calculatedAt: string;
         };
+        /** ScheduleDetail */
+        ScheduleDetail: {
+            /** Name */
+            name: string;
+            /** Start */
+            start: string;
+            /** End */
+            end: string;
+        };
         /** StoreRecommendation */
         StoreRecommendation: {
             /** Appid */
@@ -603,6 +705,19 @@ export interface components {
              */
             calculatedAt: string;
         };
+        /** SummaryDetail */
+        SummaryDetail: {
+            /** Version */
+            version: string;
+            /** Date */
+            date: string;
+            /** Newfeatures */
+            newFeatures: string[];
+            /** Balance */
+            balance: string[];
+            /** Bugfixes */
+            bugFixes: string[];
+        };
         /** ValidationError */
         ValidationError: {
             /** Location */
@@ -615,6 +730,17 @@ export interface components {
             input?: unknown;
             /** Context */
             ctx?: Record<string, never>;
+        };
+        /** ValueDetail */
+        ValueDetail: {
+            /** Target */
+            target: string;
+            /** Value */
+            value: string;
+            /** Changedin */
+            changedIn: string;
+            /** Previous */
+            previous: string;
         };
         /**
          * WishlistStatus
@@ -851,6 +977,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["NewsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    ask_news_steam_news_ask_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AskRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AskResponse"];
                 };
             };
             /** @description Validation Error */

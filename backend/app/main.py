@@ -24,6 +24,8 @@ from app.models import ChartSource
 from app.news import NewsService
 from app.owned_cache import OwnedGamesCache
 from app.prices import PriceLookup, PricePolicy, PriceService
+from app.qa.llm import LlmClient, OllamaLlm
+from app.qa.service import NewsQaService, QaPolicy
 from app.routers import auth, dashboard, me, news
 from app.steam.charts_api import ChartsApi
 from app.steam.store_api import StoreApi
@@ -49,6 +51,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     if isinstance(metadata, MetadataService):
         await metadata.stop()
     await app.state.http.aclose()
+    if isinstance(app.state.qa.llm, OllamaLlm):
+        await app.state.qa.llm.aclose()
     await dispose_engine()
 
 
@@ -126,8 +130,9 @@ def create_app(
     metadata: MetadataLookup | None = None,
     dashboard_service: DashboardService | None = None,
     prices: PriceLookup | None = None,
+    qa_llm: LlmClient | None = None,
 ) -> FastAPI:
-    """http·metadata·dashboard_service·prices: 테스트에서 가짜를 주입한다(기본은 실제 구현)."""
+    """http·metadata·dashboard_service·prices·qa_llm: 테스트에서 가짜를 주입한다(기본은 실제 구현)."""
     settings = get_settings()
     app = FastAPI(title="SteamMate API", lifespan=lifespan)
 
@@ -139,6 +144,19 @@ def create_app(
     app.state.metadata = metadata or build_metadata_service(settings, app.state.http, store_limiter)
     app.state.prices = prices or build_price_service(settings, app.state.http, store_limiter)
     app.state.news = NewsService(app.state.http, app.state.metadata, settings.news_cache_seconds)
+    # Ollama에는 질문 시점에만 연결한다(Ollama 없는 환경에서도 기동).
+    qa_llm = qa_llm or OllamaLlm(settings.ollama_url, settings.qa_timeout_seconds, settings.qa_model,
+                                 settings.qa_embed_model, settings.qa_num_predict)
+    app.state.qa = NewsQaService(app.state.news, qa_llm, QaPolicy(
+        max_docs=settings.qa_max_docs,
+        full_context_max_tokens=settings.qa_full_context_max_tokens,
+        chars_per_token=settings.qa_chars_per_token,
+        top_k=settings.qa_top_k,
+        pinned_chunks=settings.qa_pinned_chunks,
+        rag_num_ctx=settings.qa_rag_num_ctx,
+        num_predict=settings.qa_num_predict,
+        cache_seconds=settings.qa_cache_seconds,
+    ))
     app.state.dashboard = dashboard_service or DashboardService(
         get_sessionmaker, app.state.metadata, cc=settings.store_cc
     )

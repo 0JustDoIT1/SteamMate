@@ -3,11 +3,13 @@
 - Steam GetNewsForApp에서 공식 공지(steam_community_announcements)만 받는다. 키 불필요.
 - `maxlength`는 쓰지 않는다: 쓰면 Steam이 서식을 지우며 문단을 붙여 버린다(2026-11-03 확인). 전문을 받아 정리한다.
 - 응답·캐시에는 정리한 앞부분 발췌만 둔다. 본문 전문은 저장·캐시·로그하지 않는다(PRD: 권리 미확인 본문 비보관).
+  예외: AI 질문(app.qa)은 fetch_full로 전문을 받아 요청 처리 중·짧은 메모리 캐시에서만 쓴다(PRD F6 4번).
 - 원문 링크는 appid와 gid로 만든 상점 공지 주소(API의 url 필드는 중간 주소라 쓰지 않는다).
 """
 
 import logging
 import re
+from dataclasses import dataclass
 from datetime import UTC, datetime
 
 import httpx
@@ -58,6 +60,15 @@ class NewsItem(CamelModel):
     external_url: str | None
 
 
+@dataclass(frozen=True)
+class FullNews:
+    gid: str
+    title: str
+    published_at: datetime
+    url: str
+    text: str  # clean_news 결과 전문
+
+
 class NewsResponse(CamelModel):
     appid: int
     # 게임 이름·대표 이미지(메타데이터 캐시에 있을 때만)
@@ -67,6 +78,8 @@ class NewsResponse(CamelModel):
     # 더 오래된 글을 받을 때 넘길 값(before). 더 없으면 None
     next_before: int | None
     fetched_at: datetime
+    # 이 환경에서 AI 질문(POST /steam/news/ask)을 쓸 수 있는지(기능 플래그)
+    ask_enabled: bool = False
 
 
 class NewsService:
@@ -97,7 +110,35 @@ class NewsService:
 
     async def _fetch(self, appid: int, count: int, before: int | None) -> tuple[list[NewsItem], int | None, datetime]:
         # 하나 더 받아 다음 페이지가 있는지 안다.
-        params: dict[str, int | str] = {"appid": appid, "count": count + 1, "feeds": OFFICIAL_FEED}
+        raw = await self._request(appid, count + 1, before)
+        page, extra = raw[:count], raw[count:]
+        items = [item for r in page if (item := _to_item(appid, r)) is not None]
+        # 같은 시각의 글이 페이지 경계에 걸리면 겹칠 수 있어 1초 앞에서 다음 페이지를 시작한다.
+        next_before = page[-1].date - 1 if extra and page else None
+        return items, next_before, datetime.now(UTC)
+
+    async def fetch_full(self, appid: int, count: int, before: int | None) -> list[FullNews]:
+        """AI 질문용 공식 공지 전문(정리 후). 캐시하지 않는다 — 보관 여부는 호출자가 TTL로 정한다.
+
+        외부 링크뿐인 공지와 정리 후 본문이 빈 글은 근거로 쓸 수 없어 뺀다.
+        """
+        out = []
+        for r in await self._request(appid, count, before):
+            if not re.fullmatch(r"\d{1,20}", r.gid) or link_only_target(r.contents):
+                continue
+            text = clean_news(r.contents)
+            if text:
+                out.append(FullNews(
+                    gid=r.gid,
+                    title=r.title.strip() or "(제목 없음)",
+                    published_at=datetime.fromtimestamp(r.date, UTC),
+                    url=STORE_NEWS_URL.format(appid=appid, gid=r.gid),
+                    text=text,
+                ))
+        return out
+
+    async def _request(self, appid: int, count: int, before: int | None) -> list[_RawItem]:
+        params: dict[str, int | str] = {"appid": appid, "count": count, "feeds": OFFICIAL_FEED}
         if before is not None:
             params["enddate"] = before
         try:
@@ -117,16 +158,10 @@ class NewsService:
             logger.warning("news unexpected status: appid=%s HTTP %s", appid, res.status_code)
             raise _unavailable()
         try:
-            raw = _NewsBody.model_validate(res.json()).appnews.newsitems
+            return _NewsBody.model_validate(res.json()).appnews.newsitems
         except (ValueError, ValidationError) as exc:
             logger.warning("news schema mismatch: appid=%s", appid)
             raise _unavailable() from exc
-
-        page, extra = raw[:count], raw[count:]
-        items = [item for r in page if (item := _to_item(appid, r)) is not None]
-        # 같은 시각의 글이 페이지 경계에 걸리면 겹칠 수 있어 1초 앞에서 다음 페이지를 시작한다.
-        next_before = page[-1].date - 1 if extra and page else None
-        return items, next_before, datetime.now(UTC)
 
 
 def _to_item(appid: int, raw: _RawItem) -> NewsItem | None:

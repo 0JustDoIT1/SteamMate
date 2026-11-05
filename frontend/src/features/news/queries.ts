@@ -1,11 +1,13 @@
 "use client";
 
-import { useInfiniteQuery } from "@tanstack/react-query";
+import { useInfiniteQuery, useMutation } from "@tanstack/react-query";
 
 import { ApiError, apiFetch, type Schemas } from "@/lib/api/client";
 
 export type News = Schemas["NewsResponse"];
 export type NewsItem = Schemas["NewsItem"];
+export type AskRequest = Schemas["AskRequest"];
+export type AskResponse = Schemas["AskResponse"];
 
 const PAGE_SIZE = 10;
 
@@ -20,5 +22,17 @@ export function useGameNews(appid: number) {
     staleTime: 10 * 60_000,
     // 없는 게임(404)·잘못된 입력(422)은 다시 시도해도 같다.
     retry: (count, error) => !(error instanceof ApiError && [404, 422].includes(error.status)) && count < 1,
+  });
+}
+
+/** 뉴스 AI 질문. 답변은 이 mutation 상태로만 보여 주고 다른 곳에 복제하지 않는다. */
+export function useAskNews() {
+  return useMutation({
+    mutationFn: (body: AskRequest) =>
+      apiFetch<AskResponse>("/steam/news/ask", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      }),
   });
 }

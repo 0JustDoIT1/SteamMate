@@ -6,12 +6,11 @@
 import re
 from dataclasses import dataclass
 
-REFUSAL = "근거 없음"
-# 지시와 다른 말로 거절하는 경우(2k 스모크 실행에서 "정보 없음" 관측)
-REFUSALS = (REFUSAL, "정보 없음", "알 수 없", "찾을 수 없", "언급되지 않", "언급이 없")
+from app.qa.prompt import answer_line, cited_ids, final_text
+from app.qa.templates import REFUSAL, REFUSALS, QaIntent, ValueAnswer, parse, render
+
 # Q34처럼 "그 버전에서 바뀌지 않았다"도 맞는 답 없음 질문용
 NO_CHANGE = ("변경 없음", "바뀌지 않", "변경되지 않", "변경이 없", "변동 없음")
-_DOC_ID = re.compile(r"\bN\d{3}\b")
 _NUMERIC = re.compile(r"^[\d.]+$")
 
 
@@ -21,26 +20,6 @@ class Grade:
     refused: bool
     answer_line: str
     cited: list[str]
-
-
-def final_text(content: str) -> str:
-    """Thinking 모델의 추론 부분(</think> 앞)을 버린다."""
-    return content.rsplit("</think>", 1)[-1].strip()
-
-
-def _answer_line(text: str) -> str:
-    for line in text.splitlines():
-        m = re.match(r"\s*\**\s*답\s*\**\s*[:：]\s*(.*)", line)
-        if m:
-            return m.group(1).strip()
-    return text.strip()  # 형식을 안 지키면 전체를 본다
-
-
-def _cited(text: str) -> list[str]:
-    for line in text.splitlines():
-        if re.match(r"\s*\**\s*근거\s*\**\s*[:：]", line):
-            return sorted(set(_DOC_ID.findall(line)))
-    return sorted(set(_DOC_ID.findall(text)))
 
 
 def _matches(option: str, text: str) -> bool:
@@ -55,12 +34,25 @@ def _squash(s: str) -> str:
     return re.sub(r"\s+", "", s).lower()
 
 
+def structured_content(intent: QaIntent, raw: str, titles: dict[str, str]) -> str:
+    """v5 JSON 칸을 채점용 "답: … / 근거: …"로. 값 질문은 값 칸만 본다 —
+    화면 문장("50 (55 → 50)")의 이전 값까지 보면 틀린 답이 정답으로 잡힌다(v5 첫 집계에서 발견)."""
+    filled = parse(intent, raw, titles)
+    if filled is None:
+        return "답: (형식 오류)"
+    text, refused = render(filled)
+    if isinstance(filled, ValueAnswer) and not refused:
+        text = filled.value
+    return f"답: {REFUSAL if refused else text}\n근거: {', '.join(filled.sources)}"
+
+
 def grade(content: str, answer: list[list[str]]) -> Grade:
     text = final_text(content)
-    line = _answer_line(text)
+    found = answer_line(text)
+    line = found if found is not None else text.strip()  # 형식을 안 지키면 전체를 본다
     refused = any(p in line for p in REFUSALS)
     if not answer:  # 답 없음 질문
         correct = refused or any(p in line for p in NO_CHANGE)
     else:
         correct = not refused and all(any(_matches(o, line) for o in options) for options in answer)
-    return Grade(correct, refused, line, _cited(text))
+    return Grade(correct, refused, line, sorted(set(cited_ids(text))))
