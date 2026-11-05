@@ -279,7 +279,9 @@ class NewsQaService:
             result: ChatResult | None = None
             context_ids: set[str] = set()
             if mode is QaMode.FULL_CONTEXT:
-                num_ctx = int(estimate * 1.2) + 2048
+                # 분량에 맞춘 길이(추정 × 1.2 + 2048) 대신 RAG·번역과 같은 길이로 고정한다. 요청마다 길이가 달라지면
+                # Ollama가 모델을 다시 올려 약 4초씩 늦었다. Full Context는 약 8k 이하라 12k 안에 들어간다
+                num_ctx = max(self._policy.rag_num_ctx, int(estimate * 1.2) + 2048)
                 result = await self.llm.chat(system, user_prompt(text, req.question), num_ctx, schema)
                 context_ids = {d.id for d in corpus.docs}
                 if self._truncated(result, num_ctx):

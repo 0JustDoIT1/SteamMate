@@ -291,20 +291,28 @@ async def test_large_corpus_uses_rag_top_k(ai_client, steam_handler, fake_llm):
     assert [s["gid"] for s in body["sources"]] == ["4999"]
     _, user, num_ctx = fake_llm.chats[0]
     assert num_ctx == get_settings().qa_rag_num_ctx
-    # 값 질문: Top-K만(최신 공지 고정·표시 없음)
-    assert user.count("\n\n---\n\n") <= get_settings().qa_top_k - 1
+    # 값 질문: Top-K만(최신 공지 고정·표시 없음). 조각을 10개로 늘린 v8 재실험은 latest가 떨어져 되돌림(PRD v6.11)
+    assert user.count("\n\n---\n\n") == get_settings().qa_top_k - 1
     assert user.startswith("문서:\n[N021] Patch final")  # 질문과 가장 가까운 조각이 먼저
     assert fake_llm.embeds[-1] == ["Arc Lance 피해량은?"]
 
 
 async def test_full_context_truncation_falls_back_to_rag(ai_client, steam_handler, fake_llm):
     steam_handler["fn"] = news_handler(two_notes())
-    rag_ctx = get_settings().qa_rag_num_ctx
     # 첫(Full Context) 호출은 입력이 한도에 닿았다고 응답 → 검색 모드로 다시 묻는다
-    fake_llm.prompt_tokens = lambda num_ctx: num_ctx if num_ctx != rag_ctx else 200
+    calls = iter([get_settings().qa_rag_num_ctx, 200])
+    fake_llm.prompt_tokens = lambda num_ctx: next(calls)
     body = (await ai_client.post("/steam/news/ask", json=ask())).json()
     assert body["mode"] == "RAG" and body["inputTokens"] == 200
     assert len(fake_llm.chats) == 2
+
+
+async def test_all_requests_share_one_num_ctx(ai_client, steam_handler, fake_llm):
+    """Full Context·RAG·번역이 같은 num_ctx를 쓴다 — 다르면 Ollama가 바꿀 때마다 모델을 다시 올려 약 4초씩 늦었다
+    (9단계 이후 측정: Blue Archive 2.9 → 6.4초, Terraria 3~4 → 11.4초)."""
+    steam_handler["fn"] = news_handler(two_notes())
+    await ai_client.post("/steam/news/ask", json=ask())
+    assert fake_llm.chats[0][2] == get_settings().qa_rag_num_ctx  # 공지 2건이라 Full Context
 
 
 # ---------------------------------------------------------------- 대상 범위·최신 업데이트·입력 검증
