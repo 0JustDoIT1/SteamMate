@@ -39,7 +39,7 @@ from app.qa.prompt import (
     update_scale,
     user_prompt,
 )
-from app.qa.retrieval import Chunk, VectorIndex, chunk_doc, context_chunks
+from app.qa.retrieval import Chunk, VectorIndex, chunk_doc, context_chunks, target_names
 from app.qa.templates import (
     RECENCY_INTENTS,
     ContentAnswer,
@@ -139,6 +139,8 @@ class SummaryDetail(CamelModel):
 
 
 class ValueChangeDetail(CamelModel):
+    # 공지에 적힌 수치 이름 원문(예: Damage, Knockback). 모델이 속성을 헷갈려도 사용자가 알아볼 수 있게 보인다
+    attribute: str
     version: str
     date: str
     before: str
@@ -209,6 +211,7 @@ class QaPolicy:
     full_context_max_tokens: int
     chars_per_token: float
     top_k: int
+    name_chunks: int
     pinned_chunks: int
     recent_docs: int
     rag_num_ctx: int
@@ -366,8 +369,9 @@ class NewsQaService:
                 corpus.index = VectorIndex(chunks, await self.llm.embed([c.text for c in chunks]))
             (query,) = await self.llm.embed([question])
             pinned = corpus.latest_id if summary else None
+            names = target_names(question) if intent is QaIntent.VALUE else []
             context = context_chunks(corpus.index, query, self._policy.top_k, pinned, self._policy.pinned_chunks,
-                                     recent)
+                                     recent, names, self._policy.name_chunks)
         except ValueError as exc:  # 벡터 개수·길이 이상
             logger.warning("embedding unusable: %s", exc)
             raise AppError(ErrorCode.AI_UNAVAILABLE, "AI 검색 색인을 만들 수 없습니다.", 503) from exc
@@ -411,7 +415,7 @@ def _details(filled, summary_title: str) -> dict:
         return {"value": ValueDetail(
             target=filled.target, kind=ValueKind(filled.kind), value=filled.value, changed_in=filled.changed_in,
             previous=filled.previous,
-            history=[ValueChangeDetail(version=h.version, date=h.date, before=h.before, after=h.after)
+            history=[ValueChangeDetail(attribute=h.attribute, version=h.version, date=h.date, before=h.before, after=h.after)
                      for h in filled.history])}
     if isinstance(filled, ScheduleAnswer):
         return {"schedule": ScheduleDetail(items=[

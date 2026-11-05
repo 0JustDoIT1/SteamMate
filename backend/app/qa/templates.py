@@ -20,7 +20,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, ValidationError, field_validator
 
-PROMPT_VERSION = "v7"
+PROMPT_VERSION = "v8"
 REFUSAL = "근거 없음"
 # 지시와 다른 말로 거절하는 경우(7단계 스모크 실행에서 "정보 없음" 관측)
 REFUSALS = (REFUSAL, "정보 없음", "알 수 없", "찾을 수 없", "언급되지 않", "언급이 없")
@@ -120,6 +120,8 @@ _INSTRUCTIONS = {
         "- target: 질문이 묻는 대상(예: 'Arc Lance 피해량')\n"
         f"- history: 최대 {MAX_HISTORY}건. 문서마다 그 대상의 값이 나오면 한 건씩\n"
         "  - doc: 그 문서의 ID(예: N012)\n"
+        # v8: 같은 아이템의 다른 수치(Knockback)를 묻는 속성(사거리)으로 옮겨 적던 문제(Terraria, 재실험 Q36)
+        "  - attribute: 문서에 적힌 그 수치의 이름 원문(예: 'Damage', 'Knockback', 'Use time'). 질문이 묻는 속성과 같은 것만 적는다(예: 사거리를 묻는데 문서에 Knockback만 있으면 적지 않는다)\n"
         "  - version: 그 문서 제목·본문에 적힌 버전(적혀 있지 않으면 빈 문자열)\n"
         "  - before: 바뀌기 전 값(새로 추가됐거나 적혀 있지 않으면 빈 문자열)\n"
         "  - after: 바뀐 뒤 값 또는 그 문서에 적힌 값. 단위는 문서 그대로(예: '20초', '800ms')\n"
@@ -163,8 +165,8 @@ _SCHEDULE_ITEM = {
 
 _VALUE_CHANGE = {
     "type": "object",
-    "properties": {"doc": _STR, "version": _STR, "before": _STR, "after": _STR},
-    "required": ["doc", "version", "before", "after"],
+    "properties": {"doc": _STR, "attribute": _STR, "version": _STR, "before": _STR, "after": _STR},
+    "required": ["doc", "attribute", "version", "before", "after"],
 }
 
 _SCHEMAS = {
@@ -219,6 +221,7 @@ class UpdateSummary(_Loose):
 
 class ValueChange(_Loose):
     doc: str = ""
+    attribute: str = ""
     version: str = ""
     before: str = ""
     after: str = ""

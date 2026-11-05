@@ -24,6 +24,7 @@ from app.models import ChartSource
 from app.news import NewsService
 from app.owned_cache import OwnedGamesCache
 from app.prices import PriceLookup, PricePolicy, PriceService
+from app.profile import ProfileCache
 from app.qa.llm import LlmClient, OllamaLlm
 from app.qa.service import NewsQaService, QaPolicy
 from app.routers import auth, dashboard, me, news
@@ -140,6 +141,7 @@ def create_app(
     app.state.sessions = SessionManager(settings.session_secret, settings.session_max_age_seconds)
     app.state.nonces = NonceStore()
     app.state.owned = OwnedGamesCache(settings.owned_cache_ttl_seconds)
+    app.state.profiles = ProfileCache()
     store_limiter = build_store_limiter(settings)
     app.state.metadata = metadata or build_metadata_service(settings, app.state.http, store_limiter)
     app.state.prices = prices or build_price_service(settings, app.state.http, store_limiter)
@@ -152,6 +154,7 @@ def create_app(
         full_context_max_tokens=settings.qa_full_context_max_tokens,
         chars_per_token=settings.qa_chars_per_token,
         top_k=settings.qa_top_k,
+        name_chunks=settings.qa_name_chunks,
         pinned_chunks=settings.qa_pinned_chunks,
         recent_docs=settings.qa_recent_docs,
         rag_num_ctx=settings.qa_rag_num_ctx,

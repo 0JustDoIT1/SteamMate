@@ -137,9 +137,9 @@ async def test_full_context_answer_with_verified_sources(ai_client, steam_handle
     steam_handler["fn"] = news_handler(two_notes())
     # 모델은 변경 기록만 옮긴다(순서도 뒤죽박죽). N999는 넘기지 않은 문서(지어낸 ID)
     fake_llm.reply = {"target": "Arc Lance 피해량", "sources": ["N002", "N999"], "history": [
-        {"doc": "N002", "version": "", "before": "46", "after": "48"},
+        {"doc": "N002", "attribute": "Damage", "version": "", "before": "46", "after": "48"},
         {"doc": "N999", "version": "9.9", "before": "48", "after": "99"},
-        {"doc": "N001", "version": "1.0", "before": "42", "after": "46"},
+        {"doc": "N001", "attribute": "Damage", "version": "1.0", "before": "42", "after": "46"},
     ]}
 
     res = await ai_client.post("/steam/news/ask", json=ask())
@@ -151,8 +151,8 @@ async def test_full_context_answer_with_verified_sources(ai_client, steam_handle
     assert body["answer"] == "48 (1.1에서 46 → 48)"
     assert body["value"] == {"target": "Arc Lance 피해량", "kind": "CURRENT", "value": "48", "changedIn": "1.1",
                              "previous": "46", "history": [
-                                 {"version": "1.0", "date": OLD_DAY, "before": "42", "after": "46"},
-                                 {"version": "1.1", "date": NEW_DAY, "before": "46", "after": "48"}]}
+                                 {"attribute": "Damage", "version": "1.0", "date": OLD_DAY, "before": "42", "after": "46"},
+                                 {"attribute": "Damage", "version": "1.1", "date": NEW_DAY, "before": "46", "after": "48"}]}
     assert body["summary"] is None and body["schedule"] is None and body["content"] is None
     assert [s["gid"] for s in body["sources"]] == ["2002"]  # 지어낸 ID는 버린다
     assert body["sources"][0]["url"] == f"https://store.steampowered.com/news/app/{APPID}/view/2002"

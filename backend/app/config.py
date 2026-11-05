@@ -73,6 +73,8 @@ class Settings(BaseSettings):
     # 토큰 어림값. 실험 데이터는 3.25~3.6자/토큰 → 3으로 잡아 토큰을 넉넉히(Full Context를 덜) 센다.
     qa_chars_per_token: float = 3.0
     qa_top_k: int = 5
+    # 값 질문: 대상 영문 이름이 든 조각을 최근부터 이만큼 더 넣는다(PRD v6.12, 이름 검색)
+    qa_name_chunks: int = 6
     # 최신 업데이트 공지에서 질문과 가까운 청크를 이만큼 더 넣는다(RAG)
     qa_pinned_chunks: int = 3
     # 일정·신규 콘텐츠 질문의 RAG에 최근 공지 몇 건의 청크(건마다 1개)를 더 넣을지(PRD v6.8)

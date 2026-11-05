@@ -42,6 +42,10 @@ class OwnedGamesResponse(_Loose):
 class PlayerSummary(_Loose):
     steamid: str
     communityvisibilitystate: int
+    # 공개 프로필 표시용(위쪽 바). 비공개 프로필도 닉네임·사진은 준다
+    personaname: str = ""
+    avatarmedium: str | None = None
+    profileurl: str | None = None
 
 
 class PlayerSummariesBody(_Loose):

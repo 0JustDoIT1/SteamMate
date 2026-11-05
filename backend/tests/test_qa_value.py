@@ -102,6 +102,9 @@ def test_title_version_wins_over_model_version_and_diff_needs_a_baseline():
     out = compute_value(answer(("N050", "2.4.1", "88", "150")), "Unholy Trident 피해량은 언제 바뀌었어?", docs)
     assert out.value == "1.4.5.7"
     assert compute_value(answer(("N051", "3.1", "1", "2")), "언제 바뀌었어?", docs).value == "3.1"  # 제목에 없으면 모델 값
+    # 모델이 버전 칸에 제목·날짜를 통째로 쓰면 버리고 날짜로 보인다(Apex "Cipher Patch Notes (2026-11-02)")
+    out = compute_value(answer(("N051", "Apex Legends: Cipher Patch Notes (2026-11-02)", "", "56")), "지금 피해량은?", docs)
+    assert out.history[0].version == "" and out.changed_in == "2026-09-01"
     # 기록 하나에 이전 값도 없으면 비교 기준이 없다 — "0, 변화 없음"이라고 하지 않는다
     out = compute_value(answer(("N050", "", "", "300")), "Super Mana Potion 회복량은 얼마나 늘었어?", docs)
     assert out.value == REFUSAL
@@ -119,6 +122,31 @@ def test_padded_doc_ids_are_normalized():
     filled = parse(QaIntent.VALUE, raw)
     assert filled.history[0].doc == "N115" and filled.sources == ["N115"]
     assert compute_value(filled, "2.4.1 패치에서 Tide Caller의 피해량은 얼마로 바뀌었나요?", DOCS).value == "50"
+
+
+def test_attribute_filter_drops_other_stats_of_same_item():
+    """사거리를 묻는데 모델이 Knockback 기록을 옮기면 서버가 버린다(PRD v6.13, Terraria·Q36)."""
+    from app.qa.value import question_attribute
+
+    docs = {"N050": DocInfo("2026-08-19", "Terraria 1.4.5.7 - Out Now for PC!")}
+    knock = ValueAnswer(target="Unholy Trident 사거리", history=[
+        ValueChange(doc="N050", attribute="Knockback", version="", before="6.5", after="6.66")])
+    assert compute_value(knock, "Unholy Trident 사거리는 얼마야?", docs).value == REFUSAL
+    assert compute_value(knock, "Unholy Trident 넉백은 얼마야?", docs).value == "6.66"
+    dmg = ValueAnswer(target="피해량", history=[ValueChange(doc="N050", attribute="Damage", before="88", after="150")])
+    assert compute_value(dmg, "Unholy Trident 피해량은 지금 얼마야?", docs).value == "150"
+    # 속성을 적지 않았거나 표에 없는 말로 물으면 걸러내지 않는다
+    assert compute_value(dmg, "Unholy Trident 성능은 지금 얼마야?", docs).value == "150"
+    no_attr = ValueAnswer(target="x", history=[ValueChange(doc="N050", before="6.5", after="6.66")])
+    assert compute_value(no_attr, "사거리는 얼마야?", docs).value == "6.66"
+    assert question_attribute("재사용 대기시간은 몇 초?")[0] == "cooldown"  # 긴 말부터
+
+
+def test_from_to_in_one_field_is_split():
+    docs = {"N050": DocInfo("2026-08-19", "Terraria 1.4.5.7")}
+    mana = ValueAnswer(target="회복량", history=[ValueChange(doc="N050", attribute="Mana recovery", after="300 to 400")])  # 실제 응답 그대로
+    out = compute_value(mana, "Super Mana Potion 회복량은 얼마야?", docs)
+    assert (out.value, out.previous) == ("400", "300")
 
 
 def test_legacy_record_with_direct_value_is_kept():

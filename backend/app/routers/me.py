@@ -11,12 +11,14 @@ from app.deps import (
     get_metadata,
     get_owned_cache,
     get_prices,
+    get_profile_cache,
     get_steam_api,
 )
 from app.library import LibraryResponse, fetch_library
 from app.metadata.service import MetadataLookup
 from app.owned_cache import OwnedGamesCache
 from app.prices import PriceLookup
+from app.profile import ProfileCache, ProfileResponse
 from app.recommend import RecommendationsResponse, fetch_recommendations
 from app.steam.web_api import SteamWebApi
 from app.store_recs import StoreRecommendationsResponse, fetch_store_recommendations
@@ -26,6 +28,16 @@ MAX_EXCLUDE = 1000
 
 # 로그인한 본인 데이터만 다룬다. 경로·쿼리로 steamId를 받지 않는다.
 router = APIRouter(prefix="/me", tags=["me"])
+
+
+@router.get("/profile", response_model=ProfileResponse)
+async def my_profile(
+    steam_id: Annotated[str, Depends(current_steam_id)],
+    api: Annotated[SteamWebApi, Depends(get_steam_api)],
+    profiles: Annotated[ProfileCache, Depends(get_profile_cache)],
+) -> ProfileResponse:
+    """위쪽 바의 닉네임·프로필 사진(공개 프로필 요약). 10분 메모리 캐시."""
+    return await profiles.get(api, steam_id)
 
 
 @router.get("/library", response_model=LibraryResponse)

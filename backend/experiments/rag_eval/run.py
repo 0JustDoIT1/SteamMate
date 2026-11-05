@@ -23,7 +23,13 @@ from typing import Protocol
 import httpx
 
 from app.qa.prompt import latest_update_id, mark_latest, recent_ids
-from app.qa.retrieval import VectorIndex, chunk_doc, context_chunks, recall_at_k
+from app.qa.retrieval import (
+    VectorIndex,
+    chunk_doc,
+    context_chunks,
+    recall_at_k,
+    target_names,
+)
 from app.qa.templates import (
     RECENCY_INTENTS,
     QaIntent,
@@ -42,6 +48,7 @@ RESULTS = Path(__file__).parent / "results"
 MODELS = {"bonsai-2:9b": ["2k", "8k", "32k", "100k"], "qwen3:4b": ["2k", "8k", "32k"]}  # PRD v6.5
 NUM_PREDICT = 1024  # Thinking 모델(qwen3:4b)의 추론이 길어 넉넉히. 두 모델에 같은 값.
 TOP_K = 5
+NAME_CHUNKS = 6  # 서비스 qa_name_chunks와 같게: 값 질문에 대상 이름이 든 조각(PRD v6.12)
 PINNED_CHUNKS = 3  # 서비스와 같게: 업데이트 요약 질문에만 최신 업데이트 공지 청크를 더 넣는다
 RECENT_DOCS = 5  # 서비스 qa_recent_docs와 같게: 일정·콘텐츠 질문에만 최근 공지마다 청크 1개
 RECALL_KS = (1, 3, 5, 10)
@@ -225,8 +232,9 @@ def run_model(client: Client, data: dict, model: str, buckets: list[str], out: P
                 ranked = [c.doc_id for c, _ in hits]
                 intent = classify(q["text"])
                 summary = intent is QaIntent.UPDATE_SUMMARY
+                names = target_names(q["text"]) if intent is QaIntent.VALUE else []
                 context = context_chunks(index, qvec, TOP_K, latest if summary else None, PINNED_CHUNKS,
-                                         recent if intent in RECENCY_INTENTS else [])
+                                         recent if intent in RECENCY_INTENTS else [], names, NAME_CHUNKS)
                 texts = [c.text.replace(f"[{c.doc_id}] ", f"[{c.doc_id}] {mark_latest('').strip()} ", 1)
                          if summary and c.doc_id == latest else c.text for c in context]
                 user = "문서:\n" + "\n\n---\n\n".join(texts) + f"\n\n질문: {q['text']}"

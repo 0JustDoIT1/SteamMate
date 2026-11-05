@@ -1,5 +1,6 @@
 """RAG용 청킹·In-Memory 벡터 검색(7단계 실험과 서비스 공용). 임베딩은 호출자가 넣는다(Ollama bge-m3)."""
 
+import re
 from collections.abc import Sequence
 from dataclasses import dataclass
 
@@ -59,15 +60,45 @@ class VectorIndex:
         return [(self.chunks[i], float(scores[i])) for i in picked]
 
 
+# 질문 속 영문 이름("Void Pistol", "Arc Lance"). 한글이 바로 붙어도("Arc Lance의") 이름만 잡도록 영문·숫자만 본다
+_NAME = re.compile(r"[A-Za-z][A-Za-z0-9'’\-]*(?:[ \t]+[A-Za-z][A-Za-z0-9'’\-]*)*")
+# 이름이 아닌 흔한 말(모든 패치 조각에 걸린다)
+_NOT_NAMES = frozenset({"patch", "hotfix", "notes", "note", "update", "version", "dlc", "the", "ms", "hp", "dps"})
+
+
+def target_names(question: str) -> list[str]:
+    """값 질문의 대상 이름(영문). 한국어로만 물으면 빈 목록 — 이름 검색 없이 의미 검색만 한다."""
+    names = []
+    for m in _NAME.finditer(question):
+        name = m[0].strip(" \t'’-")  # 'Patch 2.3.0 Hotfix'처럼 따옴표가 붙어도
+        if len(name) >= 3 and name.lower() not in _NOT_NAMES:
+            names.append(name)
+    return list(dict.fromkeys(names))
+
+
+def name_chunks(index: VectorIndex, names: Sequence[str], k: int, exclude: Sequence[Chunk] = ()) -> list[Chunk]:
+    """이름이 글자 그대로 들어간 청크를 최근 문서부터 k개(PRD v6.12). 의미 검색은 이름이 한 줄만 나온 옛 패치
+    조각을 순위에서 밀어내 여러 공지의 변경 기록을 놓쳤다. 최근부터 넣어 최신 기록을 먼저 지킨다.
+    문서 ID는 오래된 글부터 N001…이라 ID 역순 = 최근 순."""
+    if not names or k <= 0:
+        return []
+    patterns = [re.compile(rf"(?<![A-Za-z0-9]){re.escape(n)}(?![A-Za-z0-9])", re.IGNORECASE) for n in names]
+    hits = [c for c in index.chunks if c not in exclude and any(p.search(c.text) for p in patterns)]
+    hits.sort(key=lambda c: c.doc_id, reverse=True)  # 안정 정렬: 같은 문서 안에서는 원래 순서
+    return hits[:k]
+
+
 def context_chunks(index: VectorIndex, query: list[float], top_k: int,
-                   pinned_doc: str | None, pinned_k: int, recent_docs: Sequence[str] = ()) -> list[Chunk]:
+                   pinned_doc: str | None, pinned_k: int, recent_docs: Sequence[str] = (),
+                   names: Sequence[str] = (), name_k: int = 0) -> list[Chunk]:
     """전체 Top-K + 고정 문서(최신 업데이트)에서 질문과 가까운 청크 pinned_k개
-    + 최근 문서마다 질문과 가장 가까운 청크 1개(겹치면 한 번만)."""
+    + 최근 문서마다 질문과 가장 가까운 청크 1개 + 대상 이름이 든 청크 name_k개(겹치면 한 번만)."""
     chunks = [c for c, _ in index.search(query, top_k)]
     if pinned_doc is not None:
         chunks += [c for c, _ in index.search(query, pinned_k, pinned_doc) if c not in chunks]
     for doc_id in recent_docs:
         chunks += [c for c, _ in index.search(query, 1, doc_id) if c not in chunks]
+    chunks += name_chunks(index, names, name_k, chunks)
     return chunks
 
 

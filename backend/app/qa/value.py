@@ -41,6 +41,63 @@ _NOT_HOTFIX = re.compile(r"핫픽스가\s*아닌|정규")
 _NUMBER = re.compile(r"-?\d[\d,]*(?:\.\d+)?")
 
 
+# 질문의 속성(한국어) → 공지에 쓰이는 속성 이름에 들어갈 말(PRD v6.13). 모델은 기록의 속성 이름(attribute)을
+# 정확히 적지만 "질문과 같은 속성만"이라는 지시는 따르지 않았다(사거리 → Knockback, v10 재실험·Terraria).
+# 표에 없는 말로 물으면 걸러내지 않는다. 긴 말부터 본다("재사용 대기시간"이 "시간"보다 먼저).
+ATTRIBUTE_TERMS: dict[str, tuple[str, ...]] = {
+    "피해량": ("damage", "dmg", "피해"),
+    "데미지": ("damage", "dmg", "피해"),
+    "대미지": ("damage", "dmg", "피해"),
+    "공격력": ("damage", "attack", "공격"),
+    "사거리": ("range", "reach", "distance", "사거리"),
+    "넉백": ("knockback", "넉백"),
+    "쿨다운": ("cooldown", "recharge", "재사용", "쿨"),
+    "쿨타임": ("cooldown", "recharge", "재사용", "쿨"),
+    "재사용 대기시간": ("cooldown", "recharge", "재사용", "쿨"),
+    "탄창": ("magazine", "mag", "clip", "ammo", "탄창"),
+    "체력": ("health", "hp", "life", "체력"),
+    "방어력": ("defense", "armor", "armour", "방어"),
+    "사용 시간": ("use time", "usetime", "사용 시간"),
+    "공격 속도": ("attack speed", "fire rate", "use time", "공격 속도"),
+    "이동 속도": ("movement speed", "move speed", "speed", "이동 속도"),
+    "치명타": ("crit", "critical", "치명"),
+    "지속 시간": ("duration", "지속"),
+    "회복량": ("heal", "restore", "recovery", "regen", "회복"),
+    "시위 당김": ("draw", "시위"),
+    "최대 인원": ("player", "capacity", "인원"),
+    "가격": ("price", "cost", "가격"),
+    "확률": ("chance", "rate", "probability", "확률"),
+}
+_TERMS_BY_LENGTH = sorted(ATTRIBUTE_TERMS, key=len, reverse=True)
+# 한 칸에 이전·이후가 함께 온 경우("300 to 400", "6.5 → 6.66")
+_FROM_TO = re.compile(r"^\s*(-?[\d.,]+\s*[^\s\d→>-]*)\s*(?:→|->|\bto\b)\s*(-?[\d.,]+.*)$", re.IGNORECASE)
+
+
+def question_attribute(question: str) -> tuple[str, ...]:
+    """질문이 묻는 속성의 공지 쪽 이름들. 표에 없으면 빈 값(걸러내지 않음)."""
+    squashed = re.sub(r"\s+", "", question)
+    for term in _TERMS_BY_LENGTH:
+        if re.sub(r"\s+", "", term) in squashed:
+            return ATTRIBUTE_TERMS[term]
+    return ()
+
+
+def _attribute_matches(attribute: str, wanted: tuple[str, ...]) -> bool:
+    """기록의 속성 이름이 질문의 속성과 맞는가. 속성을 적지 않았거나 표에 없는 질문이면 판단하지 않는다(통과)."""
+    if not wanted or not attribute.strip():
+        return True
+    a = attribute.lower()
+    return any(w in a for w in wanted)
+
+
+def _split_from_to(change: ValueChange) -> ValueChange:
+    """"300 to 400"처럼 이후 값 칸에 이전·이후가 함께 오면 나눠 담는다(Terraria 마나 포션)."""
+    if change.before:
+        return change
+    m = _FROM_TO.match(change.after)
+    return change.model_copy(update={"before": m[1].strip(), "after": m[2].strip()}) if m else change
+
+
 def value_kind(question: str) -> ValueKind:
     if _COUNT.search(question):
         return ValueKind.COUNT
@@ -96,16 +153,18 @@ def compute_value(filled: ValueAnswer, question: str, docs: dict[str, DocInfo],
     if not filled.history and filled.value:
         return filled
     kind = value_kind(question)
+    wanted = question_attribute(question)
     order = {doc_id: i for i, doc_id in enumerate(sorted(docs, key=lambda d: (docs[d].date, d)))}
     history = [
         h.model_copy(update={"date": docs[h.doc].date,
                              # 제목의 버전이 먼저: 모델은 지시문 예시 버전을 베끼기도 했다(Terraria에 "2.4.1")
-                             "version": title_version(docs[h.doc].title) or h.version.lstrip("vV")})
-        for h in filled.history
-        if h.doc in docs and (allowed is None or h.doc in allowed) and h.after
+                             # 모델이 쓴 칸에서도 버전 번호 꼴만 받는다 — 제목·날짜를 통째로 쓰기도 했다(Apex)
+                             "version": title_version(docs[h.doc].title) or title_version(h.version)})
+        for h in map(_split_from_to, filled.history)
+        if h.doc in docs and (allowed is None or h.doc in allowed) and h.after and _attribute_matches(h.attribute, wanted)
     ]
     # 같은 기록을 두 번 적은 경우(pydantic 모델은 해시가 없어 칸 묶음으로 비교)
-    history = list({(h.doc, h.version, h.before, h.after): h for h in history}.values())
+    history = list({(h.doc, h.attribute, h.version, h.before, h.after): h for h in history}.values())
     history.sort(key=lambda h: order[h.doc])  # 안정 정렬: 같은 문서 안에서는 모델 순서
     if not history:
         return _refused(filled, kind, [])

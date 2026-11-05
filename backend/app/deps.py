@@ -12,6 +12,7 @@ from app.metadata.service import MetadataLookup
 from app.news import NewsService
 from app.owned_cache import OwnedGamesCache
 from app.prices import PriceLookup
+from app.profile import ProfileCache
 from app.qa.service import NewsQaService
 from app.steam.web_api import SteamWebApi
 
@@ -30,6 +31,10 @@ def get_nonces(request: Request) -> NonceStore:
 
 def get_metadata(request: Request) -> MetadataLookup:
     return request.app.state.metadata
+
+
+def get_profile_cache(request: Request) -> ProfileCache:
+    return request.app.state.profiles
 
 
 def get_owned_cache(request: Request) -> OwnedGamesCache:
