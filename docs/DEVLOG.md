@@ -19,14 +19,15 @@
 | 6 | 뉴스 조회·정제 (R1 완료) | ✅ 완료 (화면 확인) — R1 완료 |
 | 7 | Full Context vs RAG 실험 | ✅ 완료 — 임계값 8k(PRD v6.6) |
 | 8 | 뉴스 AI 질문 (R2 완료) | ✅ 답변 틀 v7(PRD v6.9) — 값 질문 서버 계산, 실제 공지·재실험 확인 |
-| 9 | E2E·배포 | 대기 (배포 대상 결정 필요) |
+| 9 | E2E·배포 | ✅ 로컬 Docker 운영 구성, E2E 10개 통과(개발·운영), API 제한 점검(빠진 3개 기록) |
 
 > 11-03 PRD v6.1로 단계 재배치(로그인 → 대시보드 → 기능). 이전 계획의 "입력 파서" 단계는 삭제.
 
-**다음 세션에서 이어서 할 일** (8단계)
-1. 남은 한계 검토(선택): 본문이 링크뿐인 공지(Blue Archive), RAG에 안 걸린 공지의 값 기록, Full Context num_ctx 변동에 따른 모델 재로딩(미측정)
-2. 미검증: 프론트 프로덕션 빌드(`npm run build`, CI에서 확인), 30초 넘는 첫 질문의 프록시 통과(설정만 확인)
-3. 9단계: 배포 대상 결정(프론트 Vercel 가능, 백엔드·DB는 상시 실행 서버 필요), E2E
+**다음 세션에서 이어서 할 일** (9단계 이후, 모든 단계 완료)
+1. 공개 배포를 하게 되면: 출시 게이트(뉴스 권리·비문서화 store 엔드포인트 약관 검토), 빠진 API 제한 3개(9단계 기록), 개발과 다른 비밀값
+2. 남은 한계 검토(선택): 본문이 링크뿐인 공지(Blue Archive), RAG에 안 걸린 공지의 값 기록, Full Context num_ctx 변동에 따른 모델 재로딩(미측정)
+3. 미검증: 실제 Steam 로그인 화면을 거친 운영 모드 콜백(쿠키 Secure), E2E의 CI 실행(로컬 전용 결정)
+- 운영 구성: `docker compose -f compose.prod.yml up --build -d` → http://localhost:8080 / E2E: `cd frontend && E2E_STEAMID=<17자리> npm run e2e` (운영 구성은 `E2E_BASE_URL=http://localhost:8080`)
 - 실행 전 확인: Ollama 서버(`http://127.0.0.1:11434`), 모델 `bonsai-2:9b`·`qwen3:4b`·`bge-m3`(D:\ollama\models)
 
 **커밋**: `b9aeec4` 기본 뼈대 → `b5f579a` 환경설정(0·1단계) → `677220c` 오류 코드 PRD 추가 → `3f62620` CI 타입 검사 수정
@@ -691,3 +692,22 @@
 - 실제 확인 [확인]: DST "Willow의 Shadow Fire가 때로는 타겟에 도달하지 않고 그 주위를 맴돌 때가 있습니다", "Frankenswine, Mermummy, 그리고 Vamphare는 개별적으로 애그로될 때 자동으로 서로에게 타겟을 공유하지 않습니다" — 이름 유지. 7DTD·Elden Ring·CK3·Apex·Terraria는 이미 한국어라 번역 호출 없음
 - **성능 문제 발견·수정** [확인]: 번역 요청을 num_ctx 4096으로 보내자 Ollama가 답변 요청(12288)과 오가며 모델을 다시 올려, 번역이 없는 Terraria 값 질문까지 4초 → 13초. 번역도 `qa_rag_num_ctx`로 맞춰 해결(DST 번역 포함 4.8초, Terraria 값 3.4초). 참고: Full Context는 질문마다 num_ctx를 분량으로 정해 같은 재로딩이 생길 수 있음(미측정)
 - 테스트: 번역 대상 고르기, 이름 단어 추출, 순서 유지·한국어 줄 미전송, 이름 바뀜·한글 없음·숫자 빠짐 거절, 호출 없음, 요청 실패·개수 다름은 원문, API 통합(두 번째 요청에 영어 줄만, 같은 num_ctx). 전체 347개 통과(DB 제외 51 skip), ruff 통과
+
+### 9단계 — 운영 구성·API 제한 점검·E2E (2026-11-06)
+
+**결정 (사용자 선택)**: 배포 대상 = **로컬 Docker 운영 구성만**(외부 공개 배포 없음, 비용 0, 나중에 어느 서버로든 옮길 수 있게). E2E = **실제 Steam API + 내 계정, 로컬 전용**(CI 제외). `@playwright/test`(PRD 기술 표 승인) 설치 직전 재확인 후 설치 — 1.64.1(10-14 배포), 개발 의존성, Chromium만. `npm audit` moderate 8건은 기존 ESLint 체인(`@typescript-eslint`·`minimatch`)이며 Playwright와 무관
+
+**운영 구성** (`compose.prod.yml`, `backend/Dockerfile`, `frontend/Dockerfile`, `.dockerignore` 2개, `next.config.ts` `output: "standalone"`)
+- db(postgres:17, 볼륨 분리) → migrate(`alembic upgrade head` 1회, 스키마는 마이그레이션으로만) → backend(healthcheck) → frontend(127.0.0.1:8080). 개발 환경(DB 5433, 3000·8000)과 포트·볼륨이 겹치지 않음
+- 비밀값은 새 파일 없이 `backend/.env`를 실행 시 환경 변수로 넘김(이미지에 넣지 않음, Claude는 읽지 않음). 운영 값(`APP_ENV=production`, DB 주소, `PUBLIC_BASE_URL=http://localhost:8080`, `NEWS_AI_ENABLED=false`)은 compose가 덮어씀. 실제 서버에 올릴 때는 개발과 다른 비밀값을 따로 둘 것
+- 백엔드 워커 1개(수집기·메모리 캐시·GPU 직렬화 잠금이 한 프로세스 전제), 루트가 아닌 사용자로 실행. 프론트 rewrites 대상은 빌드 인자 `BACKEND_URL=http://backend:8000`(rewrites는 빌드 때 정해짐)
+- 확인 [확인]: 기동 순서·마이그레이션 5개 적용, `/api/health` env=production, 대시보드(수집기가 기동 직후 차트 수집), 뉴스, Steam 로그인 이동(return_to `localhost:8080/api/auth/steam/callback`), 비로그인 401
+
+**API 제한 점검** — 적용됨: Steam 요청 타임아웃 10초, 상점 API 토큰 버킷(초당 0.6·순간 10)+동시 4+429 시 60초 정지, 실패 재시도 대기, 가격 요청당 묶음 3, 캐시(보유 5분·뉴스 10분·질문 공지 10분), 입력 검증(appid 범위·뉴스 1~20·제외 1000·질문 300자·모르는 항목 거절), 세션 7일·nonce 5분, AI(120초·출력 1024·공지 50·컨텍스트 12k·한 번에 하나). **빠진 것(공개 배포 전 필요, 사용자 결정: 기록만)**: ① 우리 API로 들어오는 요청 수 제한 없음(비로그인 뉴스 목록은 새 appid마다 Steam 호출) ② Steam Web API(뉴스·보유 게임)에 호출 속도 제한기 없음(한도 하루 10만) ③ AI 질문 대기열 길이 제한 없음(몰리면 130초 프록시 시간 초과 뒤에도 서버는 처리). 공개 배포 시 ①부터(IP별 토큰 버킷 재사용, 새 오류 코드 → PRD 수정 필요)
+
+**E2E** (`frontend/playwright.config.ts`, `frontend/e2e/`, `npm run e2e`)
+- 비로그인 6개: 대시보드·로그인 버튼, OpenID 이동 주소(return_to·realm), 비로그인 안내, 위조 쿠키 거부(401), 뉴스 목록·원문 링크, API 오류 형식(422). 로그인 4개: 내 라이브러리 요약·보유 게임 추천(점수)·구매 추천·할인(오류 없음)·장르, 목록 → 뉴스 이동, 공지 질문(켜진 환경 = 요약 틀·출처, 꺼진 환경 = 안내), 로그아웃 후 401
+- 로그인: Steam 화면은 자동화할 수 없어 global-setup이 백엔드 `SessionManager`로 실제 콜백과 같은 서명 쿠키를 만듦(운영 코드 변경 없음). 쿠키는 `e2e/.auth/user.json`(gitignore)에만, 화면·로그에 출력 안 함. SteamID는 실행 때 `E2E_STEAMID`로만(커밋 안 함)
+- 결과 [확인]: 개발 서버(3000, AI 켬) **10개 통과**, 운영 구성(8080, AI 꺼짐) **10개 통과**
+- 도중에 겪은 일: ① PC 재시작 전 브라우저가 앱과 무관한 빈 페이지에서도 `requestAnimationFrame`을 실행하지 못해(Edge 포함, GPU·vsync 옵션 무관) React Suspense가 "불러오는 중…"에서 멈춤 — 재시작 후 정상. 원인 미확인(모니터 절전 추정은 사용자 확인으로 틀림) ② 세션이 끊긴 뒤 남은 개발 서버의 컴파일 워커가 죽어 500 → 재시작 ③ 재시작 후 Ollama가 꺼져 질문이 "AI 답변 서버에 연결할 수 없습니다"(오류 안내는 정상 동작) ④ 테스트 버그: Next.js 경로 안내 요소도 alert 역할이라 질문 영역 안에서만 셈 ⑤ Playwright 보고서 폴더를 ESLint가 읽어 3천여 건 → 무시 목록에 추가
+- 미검증: 실제 Steam 로그인 화면을 거친 콜백(쿠키 Secure 속성 포함, 운영 모드), CI에서의 E2E(로컬 전용 결정), DoD의 "캐시 실패 시 부분 결과·통신 실패 시 오류 안내"는 pytest로만 확인(E2E에서 Steam 장애를 재현하지 않음), 외부 공개 배포(결정에 따라 하지 않음)
