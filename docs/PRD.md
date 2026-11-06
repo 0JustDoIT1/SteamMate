@@ -31,6 +31,8 @@
 > **v6.13 (2026-11-06, 사용자 승인)**: 값 질문의 변경 기록에 속성 이름(attribute, 공지 원문 예: Knockback)을 받아 화면에 함께 보이고, 질문의 속성(한국어)과 공지 쪽 이름을 잇는 서버 대응표로 다른 속성의 기록을 버린다(사거리를 물었는데 Knockback 값을 답하던 문제). 표에 없는 말이거나 속성을 적지 않은 기록은 거르지 않는다. 한 칸에 "300 to 400"처럼 온 값은 서버가 이전·이후로 나눈다.
 >
 > **v6.14 (2026-11-06, 사용자 승인)**: 화면 개편 — 어두운 남색·보라 강조 디자인, 아이콘 `lucide-react`(사용자 선택). 내 라이브러리의 탭을 사이드바 메뉴별 페이지로 분리(`/me`, `/me/store`, `/me/deals`, `/me/genres`, `/news`), 로그인 전에는 로그인이 필요한 메뉴를 숨긴다. 위쪽 바에 내 Steam 닉네임·프로필 사진(`GET /me/profile`, 공개 프로필 요약, 메모리 10분).
+>
+> **v6.15 (2026-11-06, 사용자 승인)**: ① AI 질문 미리 준비 — 질문 칸을 누르거나 질문 버튼에 마우스를 올리면 `POST /steam/news/{appid}/ask/warmup`으로 공지 수집과(필요하면) 검색 색인을 백그라운드로 준비(첫 질문 대기 단축, 페이지만 열어서는 시작하지 않음, 중복 준비 없음, 기능 OFF면 403). ② 내 게임 소식 — `GET /me/news-feed`: 최근 플레이한 보유 게임 10개의 최신 공지를 게임당 3개씩 모아 날짜순 20개, 패치 꼴 제목은 규모 표시. `/news` 맨 위에 둔다.
 
 ---
 
@@ -189,7 +191,7 @@ Browser ─ Next.js (App Router, client: TanStack Query + Zustand)
 ## 프론트엔드 상태 관리
 - **TanStack Query**: 서버 데이터 전부(`['me']`(로그인 상태), `['library']`, `['recs',opts]`, `['deals',cc]`, `['dashboard',cc]`, `['news',appid]`, `useMutation(ask)`). coverage < 100%면 `refetchInterval` 폴링.
 - **Zustand**: 전역 클라이언트 상태(`recOptions`, `excludedAppids`(persist), `selectedAppid`, `cc`). 로그인 상태·steamId를 포함한 서버 데이터를 복제하지 않는다. 클라이언트 컴포넌트에서만 사용.
-- 화면(v6.14): 왼쪽 사이드바 메뉴마다 한 페이지 — `/` 인기 대시보드, `/me` 내 라이브러리(통계·보유 게임 추천), `/me/store` 구매 추천, `/me/deals` 할인, `/me/genres` 장르 취향, `/news` 공식 뉴스(보유 게임 목록) → `/news/[appid]` 뉴스·질문. 로그인 전에는 대시보드만 보이고 로그인 안내를 둔다. 위쪽 바에 내 Steam 닉네임·프로필 사진과 로그인·로그아웃.
+- 화면(v6.14): 왼쪽 사이드바 메뉴마다 한 페이지 — `/` 인기 대시보드, `/me` 내 라이브러리(통계·보유 게임 추천), `/me/store` 구매 추천, `/me/deals` 할인, `/me/genres` 장르 취향, `/news` 공식 뉴스(내 게임 소식 + 보유 게임 목록·검색·정렬) → `/news/[appid]` 뉴스·질문. 로그인 전에는 대시보드만 보이고 로그인 안내를 둔다. 위쪽 바에 내 Steam 닉네임·프로필 사진과 로그인·로그아웃.
 
 ---
 
@@ -239,6 +241,7 @@ Browser ─ Next.js (App Router, client: TanStack Query + Zustand)
 | GET | `/auth/me` | 선택 | `{steamId}` 또는 401 |
 | POST | `/auth/logout` | — | 쿠키 삭제 |
 | GET | `/me/profile` | 필수 | `{steamId, personaName?, avatarUrl?, profileUrl?}`(공개 프로필 요약, 메모리 10분, 사진·프로필 주소는 Steam 도메인 https만) |
+| GET | `/me/news-feed` | 필수 | `{items[{appid, gameName, headerImage?, gid, title, publishedAt, url, externalUrl?, scale?(MAJOR·PATCH·HOTFIX)}], gameCount, failedCount, fetchedAt}`(최근 플레이 게임 10개 × 공지 3개, 날짜순 20개, 뉴스 발췌 캐시 공유, 일부 게임 실패 허용, v6.15) |
 | GET | `/me/library` | 필수 | 본인 공개 게임·플레이시간·장르 분포·`metadataCoverage` |
 | GET | `/me/recommendations?exclude=` | 필수 | 보유 게임 TOP3 + reasons + 모드·스냅샷 |
 | GET | `/me/store-recommendations?onSaleOnly=` | 필수 | 미보유 게임 TOP10 + reasons·가격·`wishlisted`, `candidatePoolSize`, `candidateCount`, `metadataPending`, `pricePending`, 모드, `poolSnapshotAt`, `priceSnapshotAt`. 수집 전 `DATA_NOT_READY` |
@@ -246,6 +249,7 @@ Browser ─ Next.js (App Router, client: TanStack Query + Zustand)
 | GET | `/steam/dashboard?cc=kr` | 선택 | 섹션별 `{source, snapshotAt, entries[]}`, 장르 분포. 로그인 시 개인화 |
 | GET | `/steam/news/{appid}?count=1~20&before=` | — | 공식 공지 `{appid, name, headerImage, items[{gid, title, author, publishedAt, excerpt, url, externalUrl}], nextBefore, askEnabled}`. 없는 게임 `NOT_FOUND` |
 | POST | `/steam/news/ask` | — | `{appid, question(1~300자)}`(다른 항목은 거절) → `{answer(공용 문장), refused, intent(UPDATE_SUMMARY·VALUE·SCHEDULE·CONTENT·OTHER), summary{version, date, scale(MAJOR·PATCH·HOTFIX), build(STABLE·TEST), newFeatures[], balance[], bugFixes[]}?, value{target, kind(CURRENT·AT_VERSION·FIRST·WHEN·COUNT·DIFF·VERSIONS), value, changedIn, previous, history[{attribute, version, date, before, after}]}?, schedule{items[{name, kind(EVENT·RELEASE·MAINTENANCE·TEST·SALE), start, end, status(ONGOING·UPCOMING·ENDED·UNKNOWN)}], noCurrent}?, content{name, form(FREE_UPDATE·DLC·EXPANSION·OTHER), releaseDate, status, highlights[]}?, mode(FULL_CONTEXT·RAG), sources[{gid, title, publishedAt, url}], dateRange{from, to}(사용한 글의 날짜 범위), latestUpdate{gid, title, publishedAt, url}?(업데이트 요약일 때), docCount, inputTokens, model, answeredAt}`. 플래그 OFF `FEATURE_DISABLED`, LLM 장애 `AI_UNAVAILABLE` |
+| POST | `/steam/news/{appid}/ask/warmup` | — | `202 {status: STARTED·READY}` — 공지 수집·검색 색인을 백그라운드로 미리 준비(질문 칸 포커스 때, 중복 없음). 플래그 OFF `FEATURE_DISABLED` (v6.15) |
 
 추천 응답 예:
 ```json
