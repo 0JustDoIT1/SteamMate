@@ -670,7 +670,7 @@ export interface components {
             /** Total */
             total: number;
             /** Remaining */
-            remaining: string[];
+            remaining: components["schemas"]["RemainingAchievement"][];
         };
         /** NewsFeedResponse */
         NewsFeedResponse: {
@@ -833,6 +833,15 @@ export interface components {
              * Format: date-time
              */
             calculatedAt: string;
+        };
+        /** RemainingAchievement */
+        RemainingAchievement: {
+            /** Name */
+            name: string | null;
+            /** Icon */
+            icon: string | null;
+            /** Hidden */
+            hidden: boolean;
         };
         /** ScheduleDetail */
         ScheduleDetail: {

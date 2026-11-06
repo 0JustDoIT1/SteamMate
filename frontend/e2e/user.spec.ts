@@ -19,7 +19,7 @@ test("내 라이브러리: 요약과 보유 게임 추천(점수·이유)", asyn
   const recs = page.getByRole("heading", { name: /다음에 할 게임|이어서 하기/ });
   await expect(recs).toBeVisible();
   const section = page.locator("section", { has: recs });
-  await expect(section.getByText(/후보 \d+개 중 상위/)).toBeVisible({ timeout: 60_000 });
+  await expect(section.getByText(/추천 후보 \d+개 중/)).toBeVisible({ timeout: 60_000 });
   await expect(section.locator("ol > li").first()).toContainText(/점/);
 
   // 마무리해 볼 게임(업적): 진행 막대 또는 비공개·없음 안내 중 하나

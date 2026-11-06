@@ -18,7 +18,7 @@ export default function MyDeals() {
     <section className="panel">
       <header className="flex flex-wrap items-center justify-between gap-2 border-b border-zinc-800 px-5 py-4">
         <h2 className="flex items-center gap-2 text-lg font-semibold text-white">
-          <Tag className="size-5 text-[#a68bff]" aria-hidden />
+          <Tag className="size-5 text-accent-soft" aria-hidden />
           할인
         </h2>
         {data ? (

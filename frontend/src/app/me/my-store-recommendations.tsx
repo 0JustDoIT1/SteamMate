@@ -4,7 +4,7 @@ import { ChartColumn, Crown, Gamepad2, Heart, Sparkles } from "lucide-react";
 
 import GameImage from "@/components/game-image";
 import ToggleChip from "@/components/toggle-chip";
-import { FACTOR_LABEL, MODE_LABEL } from "@/features/library/labels";
+import { MODE_LABEL, reasonLabel } from "@/features/library/labels";
 import { type StoreRecommendation, useStoreRecommendations } from "@/features/library/queries";
 import { ApiError } from "@/lib/api/client";
 import { formatDateTime, formatPrice } from "@/lib/format";
@@ -22,7 +22,7 @@ export default function StoreRecommendationsPanel() {
     <section className="panel">
       <header className="flex flex-wrap items-center justify-between gap-2 px-5 pt-5">
         <div className="flex items-center gap-2.5">
-          <Gamepad2 className="size-6 text-[#a68bff]" aria-hidden />
+          <Gamepad2 className="size-6 text-accent-soft" aria-hidden />
           <h2 className="text-lg font-bold text-white sm:text-xl">내 취향에 맞는 인기 게임</h2>
           {data ? <span className="text-sm text-zinc-400">{MODE_LABEL[data.recommendationMode]}</span> : null}
         </div>
@@ -55,10 +55,10 @@ export default function StoreRecommendationsPanel() {
 
         {data ? (
           <p className="mt-3 text-xs text-zinc-500">
-            Steam 판매·접속 순위, 할인·신작 목록에 오른 게임 중 보유하지 않은 {data.candidatePoolSize}개가 후보입니다
-            (Steam 전체 목록을 주는 공식 API가 없음).
+            Steam 판매·접속 순위와 할인·신작 목록에 오른 게임 중 아직 갖고 있지 않은 {data.candidatePoolSize}개에서
+            골랐어요.
             {data.metadataPending > 0 || data.pricePending > 0
-              ? ` 장르 ${data.metadataPending}개 · 가격 ${data.pricePending}개 수집 중, 자동 갱신.`
+              ? ` 장르 ${data.metadataPending}개·가격 ${data.pricePending}개를 확인하는 중이라 잠시 뒤 자동으로 갱신돼요.`
               : ""}
             {data.priceSnapshotAt ? ` 가격 기준 ${formatDateTime(data.priceSnapshotAt)}(한국 상점).` : ""}
             {data.wishlistChecked ? "" : " 위시리스트를 확인하지 못했습니다."}
@@ -90,7 +90,7 @@ function StoreRow({ rank, rec }: { rank: number; rec: StoreRecommendation }) {
       <div className="flex min-w-0 basis-full flex-wrap items-center gap-3 md:flex-1 md:basis-auto md:flex-nowrap md:gap-4">
       <span
         className={`grid h-8 w-9 shrink-0 place-items-center rounded-lg text-sm font-bold tabular-nums ${
-          rank === 1 ? "bg-gradient-to-br from-accent to-accent-2 text-white" : "border border-accent/40 bg-accent/10 text-zinc-100"
+          rank === 1 ? "bg-accent text-white" : "border border-accent/40 bg-accent/10 text-zinc-100"
         }`}
       >
         {rank === 1 ? (
@@ -136,10 +136,10 @@ function StoreRow({ rank, rec }: { rank: number; rec: StoreRecommendation }) {
           const Icon = r.factor === "POPULAR" ? ChartColumn : Sparkles;
           return (
             <li key={r.factor} className="flex items-center gap-2">
-              <Icon className="size-4 shrink-0 text-[#a68bff]" aria-hidden />
-              <span className="shrink-0 font-semibold text-zinc-100">{FACTOR_LABEL[r.factor]}</span>
+              <Icon className="size-4 shrink-0 text-accent-soft" aria-hidden />
+              <span className="shrink-0 font-semibold text-zinc-100">{reasonLabel(r)}</span>
               <span className="min-w-0 truncate text-zinc-400">{r.detail}</span>
-              <span className="ml-auto shrink-0 tabular-nums text-[#8fa6ff]">+{Math.round(r.contribution * 100)}</span>
+              <span className="ml-auto shrink-0 tabular-nums text-info">+{Math.round(r.contribution * 100)}</span>
             </li>
           );
         })}

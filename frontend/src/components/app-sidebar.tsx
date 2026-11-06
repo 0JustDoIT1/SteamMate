@@ -33,11 +33,11 @@ const NAV: NavItem[] = [
 export function Logo() {
   return (
     <Link href="/" className="flex items-center gap-2.5 text-xl font-bold tracking-tight">
-      <span className="grid size-9 place-items-center rounded-xl bg-gradient-to-br from-accent to-accent-2 shadow-[0_6px_20px_-6px_rgb(124_92_255/0.8)]">
+      <span className="grid size-9 place-items-center rounded-xl bg-accent">
         <Gamepad2 className="size-5 text-white" aria-hidden />
       </span>
       <span>
-        Steam<span className="bg-gradient-to-r from-[#a68bff] to-[#6f8fff] bg-clip-text text-transparent">Mate</span>
+        Steam<span className="text-accent-soft">Mate</span>
       </span>
     </Link>
   );
@@ -90,7 +90,7 @@ function NavLinks({ vertical = false }: { vertical?: boolean }) {
               aria-current={active ? "page" : undefined}
               className={`flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm transition-colors ${
                 active
-                  ? "border border-accent/50 bg-gradient-to-r from-accent/30 to-accent-2/10 font-semibold text-white shadow-[0_0_24px_-10px_rgb(124_92_255/0.9)]"
+                  ? "border border-zinc-700 bg-zinc-800/70 font-semibold text-white"
                   : "border border-transparent text-zinc-300 hover:bg-white/5 hover:text-white"
               }`}
             >

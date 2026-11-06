@@ -34,7 +34,7 @@ export default function NewsFeedPanel() {
   return (
     <section className="panel">
       <header className="flex flex-wrap items-center gap-2 border-b border-zinc-800 px-5 py-4">
-        <Rss className="size-5 text-[#a68bff]" aria-hidden />
+        <Rss className="size-5 text-accent-soft" aria-hidden />
         <h2 className="text-lg font-semibold text-white">내 게임 최근 소식</h2>
         <span className="text-xs text-zinc-500">최근 플레이한 게임의 공식 공지</span>
       </header>
@@ -63,7 +63,7 @@ export default function NewsFeedPanel() {
                   </Link>
                   <div className="min-w-0 flex-1 space-y-1">
                     <div className="flex flex-wrap items-center gap-2 text-xs">
-                      <Link href={`/news/${item.appid}`} className="font-medium text-[#8fa6ff] hover:text-white">
+                      <Link href={`/news/${item.appid}`} className="font-medium text-info hover:text-white">
                         {item.gameName}
                       </Link>
                       {item.scale ? (

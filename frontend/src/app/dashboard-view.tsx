@@ -1,11 +1,11 @@
 "use client";
 
 import { useState } from "react";
-import { Bar, BarChart, XAxis, YAxis } from "recharts";
 
 import GameImage from "@/components/game-image";
 import Sparkline from "@/components/sparkline";
-import { type ChartConfig, ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart";
+import RankedBars from "@/components/ranked-bars";
+import { genreIcon } from "@/features/library/genre-icons";
 import { useMe } from "@/features/auth/queries";
 import {
   type ChartSource,
@@ -348,8 +348,6 @@ function hourLabel(iso: string) {
   return new Date(iso).toLocaleString("ko-KR", { month: "short", day: "numeric", hour: "numeric" });
 }
 
-const genreConfig = { count: { label: "게임 수", color: "var(--chart-1)" } } satisfies ChartConfig;
-
 function GenrePanel({ data }: { data: Dashboard }) {
   const { genres, basedOn, withGenres } = data.genreDistribution;
   if (genres.length === 0) return null;
@@ -361,15 +359,11 @@ function GenrePanel({ data }: { data: Dashboard }) {
           판매 순위·주간 접속 순위 {basedOn}개 중 장르 정보가 있는 {withGenres}개 기준
         </p>
       </header>
-      <div className="px-4 py-3">
-        <ChartContainer config={genreConfig} className="aspect-auto h-72 w-full">
-          <BarChart data={genres} layout="vertical" margin={{ left: 8, right: 24 }} barCategoryGap={6}>
-            <XAxis type="number" hide />
-            <YAxis type="category" dataKey="genre" width={120} tickLine={false} axisLine={false} />
-            <ChartTooltip cursor={false} content={<ChartTooltipContent hideIndicator />} />
-            <Bar dataKey="count" fill="var(--color-count)" radius={4} isAnimationActive={false} />
-          </BarChart>
-        </ChartContainer>
+      <div className="px-5 py-5">
+        <RankedBars
+          label="이번 주 장르 순위"
+          items={genres.map((g) => ({ label: g.genre, value: g.count, display: `${g.count}개`, icon: genreIcon(g.genre) }))}
+        />
       </div>
     </section>
   );

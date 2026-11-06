@@ -3,10 +3,10 @@
 import { CalendarDays, Clock, Gamepad, Gamepad2, Newspaper, Play, Search, type LucideIcon } from "lucide-react";
 import Link from "next/link";
 import { type ReactNode, useState } from "react";
-import { Bar, BarChart, XAxis, YAxis } from "recharts";
 
 import GameImage from "@/components/game-image";
-import { type ChartConfig, ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart";
+import RankedBars from "@/components/ranked-bars";
+import { genreIcon } from "@/features/library/genre-icons";
 import { STEAM_LOGIN_URL, useMe } from "@/features/auth/queries";
 import { type Library, useMyLibrary } from "@/features/library/queries";
 import { ApiError } from "@/lib/api/client";
@@ -118,9 +118,9 @@ export function LibraryStats({ library }: { library: Library }) {
       {stats.map(([label, value, Icon], i) => (
         <div
           key={label}
-          className={`panel flex items-center gap-3 p-3 sm:gap-4 sm:p-4 ${i % 2 === 1 ? "bg-[linear-gradient(135deg,rgb(76_52_160/0.45),rgb(20_25_56/0.8))]" : ""}`}
+          className={`panel flex items-center gap-3 p-3 sm:gap-4 sm:p-4 ${i % 2 === 1 ? "bg-zinc-800/40" : ""}`}
         >
-          <span className="hidden size-10 shrink-0 place-items-center rounded-xl border border-accent-2/30 sm:grid bg-accent-2/10 text-[#8fa6ff]">
+          <span className="hidden size-10 shrink-0 place-items-center rounded-xl border border-accent-2/30 sm:grid bg-accent-2/10 text-info">
             <Icon className="size-5" aria-hidden />
           </span>
           <div className="min-w-0">
@@ -135,11 +135,14 @@ export function LibraryStats({ library }: { library: Library }) {
 
 type GameSort = "PLAYTIME" | "RECENT" | "NAME";
 const SORT_LABEL: Record<GameSort, string> = { PLAYTIME: "플레이 시간순", RECENT: "최근 플레이순", NAME: "이름순" };
+/** 처음 보여 줄 게임 수(3열 × 8줄) */
+const PAGE_SIZE = 24;
 
 export function GameList({ library }: { library: Library }) {
   // 게임이 많은 라이브러리에서 찾기 쉽게: 이름 검색 + 정렬(브라우저 안에서만, 서버 요청 없음)
   const [query, setQuery] = useState("");
   const [sort, setSort] = useState<GameSort>("PLAYTIME");
+  const [shown, setShown] = useState(PAGE_SIZE);
   const q = query.trim().toLowerCase();
   const games = library.games
     .filter((g) => !q || g.name.toLowerCase().includes(q))
@@ -153,7 +156,7 @@ export function GameList({ library }: { library: Library }) {
   return (
     <section className="panel">
       <header className="flex flex-wrap items-center gap-x-2 gap-y-3 border-b border-zinc-800 px-5 py-4">
-        <Gamepad2 className="size-5 text-[#a68bff]" aria-hidden />
+        <Gamepad2 className="size-5 text-accent-soft" aria-hidden />
         <h2 className="text-lg font-semibold text-white">보유 게임 목록</h2>
         <span className="text-xs text-zinc-500">{library.gameCount}개 · 뉴스 버튼으로 게임별 공식 공지를 봅니다</span>
         <div className="flex w-full gap-2 sm:ml-auto sm:w-auto">
@@ -185,36 +188,44 @@ export function GameList({ library }: { library: Library }) {
         </div>
       </header>
       {games.length === 0 ? <p className="px-5 py-6 text-sm text-zinc-500">&lsquo;{query}&rsquo;와 일치하는 게임이 없습니다.</p> : null}
-      <ul className="divide-y divide-zinc-800/80">
-        {games.map((game) => (
-          <li key={game.appid} className="flex items-center gap-3 px-4 py-2.5 hover:bg-white/[0.02] sm:gap-4 sm:px-5">
-            <GameImage src={game.headerImage} fallbackSrc={game.iconUrl} className="aspect-[460/215] w-20 shrink-0 rounded-md sm:w-24" />
+      {/* 세로로 길게 쌓이지 않게: 넓은 화면은 여러 열, 처음엔 일부만 보이고 '더 보기'로 펼친다 */}
+      <ul className="grid gap-2 p-3 sm:grid-cols-2 sm:p-4 xl:grid-cols-3">
+        {games.slice(0, shown).map((game) => (
+          <li
+            key={game.appid}
+            className="flex items-center gap-3 rounded-lg border border-zinc-800/80 bg-zinc-950/30 p-2 hover:border-zinc-700"
+          >
+            <GameImage src={game.headerImage} fallbackSrc={game.iconUrl} className="aspect-[460/215] w-20 shrink-0 rounded-md" />
             <div className="min-w-0 flex-1">
-              <p className="truncate font-medium text-zinc-100">{game.name}</p>
-              {/* 작은 화면은 플레이 시간을 이름 아래에 */}
-              <p className="truncate text-xs text-zinc-400 sm:hidden">
+              <p className="truncate text-sm font-medium text-zinc-100">{game.name}</p>
+              <p className="truncate text-xs tabular-nums text-zinc-400">
                 {game.playtimeForever > 0 ? hours(game.playtimeForever) : "미플레이"}
                 {game.playtime2Weeks > 0 ? <span className="ml-2 text-emerald-400">최근 {hours(game.playtime2Weeks)}</span> : null}
               </p>
             </div>
-            {game.playtime2Weeks > 0 && (
-              <span className="hidden shrink-0 text-xs text-emerald-400 sm:inline">최근 {hours(game.playtime2Weeks)}</span>
-            )}
-            <span className="hidden w-20 shrink-0 text-right text-sm tabular-nums text-zinc-400 sm:inline">
-              {game.playtimeForever > 0 ? hours(game.playtimeForever) : "미플레이"}
-            </span>
-            <Link href={`/news/${game.appid}`} className="btn-ghost shrink-0 px-3 py-1 text-xs">
+            <Link href={`/news/${game.appid}`} className="btn-ghost shrink-0 px-2.5 py-1 text-xs">
               <Newspaper className="size-3.5" aria-hidden />
               뉴스
             </Link>
           </li>
         ))}
       </ul>
+      {games.length > shown ? (
+        <div className="flex items-center justify-center gap-3 border-t border-zinc-800 px-5 py-3">
+          <span className="text-xs text-zinc-500">
+            {games.length}개 중 {shown}개
+          </span>
+          <button type="button" onClick={() => setShown((n) => n + PAGE_SIZE)} className="btn-ghost px-3 py-1 text-xs">
+            {Math.min(PAGE_SIZE, games.length - shown)}개 더 보기
+          </button>
+          <button type="button" onClick={() => setShown(games.length)} className="text-xs text-zinc-400 hover:text-white">
+            모두 보기
+          </button>
+        </div>
+      ) : null}
     </section>
   );
 }
-
-const genreConfig = { percent: { label: "취향 비중(%)", color: "var(--chart-1)" } } satisfies ChartConfig;
 
 export function GenreDistribution({ library }: { library: Library }) {
   const { metadataCoverage: c } = library;
@@ -228,30 +239,26 @@ export function GenreDistribution({ library }: { library: Library }) {
       <header className="flex flex-wrap items-center justify-between gap-2 border-b border-zinc-800 px-5 py-4">
         <h2 className="text-lg font-semibold text-white">내 장르 취향</h2>
         <p className="text-xs text-zinc-500">
-          장르 정보 {c.success}/{eligible}개 ({Math.round(c.ratio * 100)}%)
-          {c.pending > 0 ? ` · ${c.pending}개 수집 중, 자동 갱신` : ""}
-          {c.temporaryError > 0 ? ` · ${c.temporaryError}개 일시 실패(나중에 재시도)` : ""}
-          {c.notAvailable > 0 ? ` · 장르 없음 ${c.notAvailable}개 제외` : ""}
+          장르를 확인한 게임 {c.success}/{eligible}개 ({Math.round(c.ratio * 100)}%)
+          {c.pending > 0 ? ` · ${c.pending}개 확인 중(자동 갱신)` : ""}
+          {c.temporaryError > 0 ? ` · ${c.temporaryError}개는 잠시 뒤 다시 확인` : ""}
+          {c.notAvailable > 0 ? ` · 장르 정보가 없는 ${c.notAvailable}개 제외` : ""}
         </p>
       </header>
-      <div className="px-4 py-3">
+      <div className="px-5 py-5">
         {genres.length === 0 ? (
           <p className="text-sm text-zinc-500">
             {c.pending > 0 ? "장르 정보를 모으는 중입니다…" : "플레이 기록이 있는 게임의 장르 정보가 없습니다."}
           </p>
         ) : (
           <>
-            <ChartContainer config={genreConfig} className="aspect-auto w-full" style={{ height: genres.length * 28 + 16 }}>
-              <BarChart data={genres} layout="vertical" margin={{ left: 8, right: 24 }} barCategoryGap={6}>
-                <XAxis type="number" hide />
-                <YAxis type="category" dataKey="genre" width={120} tickLine={false} axisLine={false} />
-                <ChartTooltip cursor={false} content={<ChartTooltipContent hideIndicator />} />
-                <Bar dataKey="percent" fill="var(--color-percent)" radius={4} isAnimationActive={false} />
-              </BarChart>
-            </ChartContainer>
-            <p className="mt-2 text-xs text-zinc-500">
-              장르별 플레이 시간에 로그를 씌워 합한 비중입니다. 오래 한 게임 하나가 분포를 독차지하지 않게 하며, 추천의 &lsquo;취향
-              장르&rsquo;와 같은 값입니다.
+            <RankedBars
+              label="내 장르 취향"
+              items={genres.map((g) => ({ label: g.genre, value: g.percent, display: `${g.percent}%`, icon: genreIcon(g.genre) }))}
+            />
+            <p className="mt-4 text-xs text-zinc-500">
+              장르마다 플레이 시간을 모아 비중을 냈어요. 한 게임을 아주 오래 해도 그 장르만 크게 잡히지 않도록 조정했고,
+              추천의 &lsquo;취향 장르&rsquo;와 같은 값입니다.
             </p>
           </>
         )}

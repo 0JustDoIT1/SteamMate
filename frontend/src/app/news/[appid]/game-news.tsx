@@ -35,7 +35,7 @@ export default function GameNews({ appid }: { appid: number }) {
             href={steamStoreUrl(appid)}
             target="_blank"
             rel="noopener noreferrer"
-            className="inline-flex items-center gap-1 text-sm text-[#8fa6ff] hover:text-white"
+            className="inline-flex items-center gap-1 text-sm text-info hover:text-white"
           >
             Steam 상점에서 보기
             <ExternalLink className="size-3.5" aria-hidden />
@@ -90,7 +90,7 @@ function NewsRow({ item }: { item: NewsItem }) {
   const target = item.externalUrl ? hostOf(item.externalUrl) : "Steam";
   return (
     <li className="flex items-center gap-3 px-4 py-4 hover:bg-white/[0.02] sm:gap-4 sm:px-5">
-      <span className="hidden size-10 shrink-0 sm:grid place-items-center rounded-xl border border-accent/30 bg-accent/10 text-[#a68bff]">
+      <span className="hidden size-10 shrink-0 sm:grid place-items-center rounded-xl border border-accent/30 bg-accent/10 text-accent-soft">
         <Megaphone className="size-5" aria-hidden />
       </span>
       <div className="min-w-0 flex-1 space-y-1">

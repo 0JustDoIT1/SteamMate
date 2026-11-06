@@ -30,7 +30,7 @@ export default function NewsAsk({ appid, enabled }: { appid: number; enabled: bo
   if (!enabled) {
     return (
       <section className="flex items-center gap-3 rounded-xl border border-accent/50 bg-accent/10 px-5 py-4 text-sm text-zinc-100">
-        <Info className="size-5 shrink-0 text-[#a68bff]" aria-hidden />
+        <Info className="size-5 shrink-0 text-accent-soft" aria-hidden />
         이 환경에서는 공지 AI 질문을 제공하지 않습니다.
       </section>
     );
@@ -59,7 +59,7 @@ function AskForm({ appid }: { appid: number }) {
     <section className="panel">
       <header className="border-b border-zinc-800 px-5 py-4">
         <h2 className="flex items-center gap-2 text-lg font-semibold text-white">
-          <MessageCircleQuestion className="size-5 text-[#a68bff]" aria-hidden />
+          <MessageCircleQuestion className="size-5 text-accent-soft" aria-hidden />
           공지에 질문하기
         </h2>
         <p className="text-xs text-zinc-500">

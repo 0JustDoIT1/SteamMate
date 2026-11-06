@@ -1,23 +1,27 @@
 @import "tailwindcss";
 
 /*
- * SteamMate 디자인(9단계 이후, 사용자 요청): 어두운 남색 바탕 + 보라·파랑 강조의 게임 톤.
+ * SteamMate 디자인(9단계 이후, 사용자 요청): 어두운 슬레이트 바탕 + 차분한 보라 강조.
+ * 처음 시안보다 채도·빛 번짐을 낮췄다(사용자 피드백: "색감이 너무 인위적").
  * - 항상 어두운 테마: dark: 변형을 html.dark에 묶고 layout에서 dark 클래스를 고정한다.
  * - 기존 화면이 쓰던 zinc 단계를 남색 계열로 바꿔(@theme) 모든 화면이 한 번에 같은 톤을 따른다.
  */
 @custom-variant dark (&:where(.dark, .dark *));
 
 :root {
-  --background: #0a0e1f;
-  --foreground: #e6e8f5;
+  --background: #0d1017;
+  --foreground: #e6e8ee;
   /* shadcn/ui chart가 쓰는 최소 토큰 */
-  --muted: #161b38;
-  --muted-foreground: #9aa1c6;
-  --border: #262c52;
-  /* 차트 계열 색: 보라(어두운 바탕에서 대비 확인) */
-  --chart-1: #8b7bff;
-  --accent: #7c5cff;
-  --accent-2: #4f7bff;
+  --muted: #181c25;
+  --muted-foreground: #9097a6;
+  --border: #272c37;
+  /* 차트 계열 색: 차분한 보라(어두운 바탕에서 대비 확인) */
+  --chart-1: #8d84e8;
+  --accent: #7468e0;
+  --accent-2: #5a78d8;
+  /* 아이콘·링크용 부드러운 강조 */
+  --accent-soft: #aaa3ef;
+  --info: #9fb0e6;
   color-scheme: dark;
 }
 
@@ -30,31 +34,33 @@
   --color-chart-1: var(--chart-1);
   --color-accent: var(--accent);
   --color-accent-2: var(--accent-2);
+  --color-accent-soft: var(--accent-soft);
+  --color-info: var(--info);
   --font-sans: var(--font-geist-sans), "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
   --font-mono: var(--font-geist-mono);
 }
 
-/* 회색(zinc)을 남색 계열로: 카드 바탕(900)·테두리(800)·보조 글자(400~500)가 참고 시안의 톤이 된다 */
+/* 회색(zinc)을 푸른 기가 살짝 도는 슬레이트로: 카드 바탕(900)·테두리(800)·보조 글자(400~500) */
 @theme {
-  --color-zinc-50: #f5f6fb;
-  --color-zinc-100: #e6e8f5;
-  --color-zinc-200: #c9cde4;
-  --color-zinc-300: #a9afd0;
-  --color-zinc-400: #9aa1c6;
-  --color-zinc-500: #7a81aa;
-  --color-zinc-600: #5d648c;
-  --color-zinc-700: #353c6b;
-  --color-zinc-800: #252b52;
-  --color-zinc-900: #141938;
-  --color-zinc-950: #0d1128;
+  --color-zinc-50: #f4f5f8;
+  --color-zinc-100: #e6e8ee;
+  --color-zinc-200: #cdd1da;
+  --color-zinc-300: #aeb3c0;
+  --color-zinc-400: #9097a6;
+  --color-zinc-500: #737a8a;
+  --color-zinc-600: #596070;
+  --color-zinc-700: #3a404d;
+  --color-zinc-800: #272c37;
+  --color-zinc-900: #181c25;
+  --color-zinc-950: #10131a;
 }
 
 /* 카드(섹션) 공통 모양 */
 @utility panel {
   border-radius: 0.875rem;
   border: 1px solid var(--color-zinc-800);
-  background: linear-gradient(180deg, rgb(24 30 66 / 0.72), rgb(16 21 48 / 0.72));
-  box-shadow: 0 1px 0 rgb(255 255 255 / 0.03) inset, 0 12px 32px -18px rgb(0 0 0 / 0.7);
+  background: rgb(24 28 37 / 0.78);
+  box-shadow: 0 1px 0 rgb(255 255 255 / 0.03) inset;
 }
 
 /* 주 버튼: 보라 → 파랑 */
@@ -69,10 +75,9 @@
   font-size: 0.875rem;
   font-weight: 600;
   color: #fff;
-  background: linear-gradient(90deg, var(--accent), var(--accent-2));
-  box-shadow: 0 6px 20px -8px rgb(124 92 255 / 0.8);
+  background: var(--accent);
   &:hover {
-    filter: brightness(1.1);
+    background: #8277ea;
   }
   &:disabled {
     opacity: 0.5;
@@ -124,8 +129,7 @@ body {
   font-family: var(--font-sans);
   /* 오른쪽 위 보라빛·왼쪽 아래 파란빛이 은은하게 번지는 밤하늘 바탕 */
   background:
-    radial-gradient(1200px 600px at 85% -10%, rgb(124 92 255 / 0.18), transparent 60%),
-    radial-gradient(900px 600px at -10% 110%, rgb(79 123 255 / 0.14), transparent 60%),
+    radial-gradient(1200px 600px at 85% -10%, rgb(116 104 224 / 0.07), transparent 60%),
     var(--background);
   background-attachment: fixed;
 }
