@@ -43,6 +43,17 @@ test("사이드바 메뉴마다 한 페이지: 구매 추천·할인·장르 취
   await expect(page.getByRole("heading", { name: "내 장르 취향" })).toBeVisible();
 });
 
+test("공식 뉴스: 내 게임 최근 소식이 최신순으로 보인다", async ({ page }) => {
+  await page.goto("/news");
+  const feed = page.locator("section", { has: page.getByRole("heading", { name: "내 게임 최근 소식" }) });
+  // 첫 항목이 나올 때까지(화면이 데이터를 받기 전에 "로딩 끝"으로 오판하지 않게)
+  await expect(feed.locator("ol > li").first()).toBeVisible({ timeout: 60_000 });
+  await expect(feed.getByRole("alert")).toHaveCount(0);
+  const times = await feed.locator("time").evaluateAll((els) => els.map((e) => e.getAttribute("datetime") ?? ""));
+  expect(times.length).toBeGreaterThan(0);
+  expect([...times].sort().reverse()).toEqual(times); // 최신 먼저
+});
+
 test("공식 뉴스: 보유 게임 목록에서 그 게임의 공지로 이동한다", async ({ page }) => {
   await page.goto("/news");
   const list = page.locator("section", { has: page.getByRole("heading", { name: "보유 게임 목록" }) });
@@ -66,6 +77,11 @@ test("공지 질문: 켜진 환경이면 근거와 함께 답하고, 꺼진 환�
   const ask = page.getByRole("button", { name: "최신 업데이트에서 바뀐 점은?" });
   await expect(disabled.or(ask)).toBeVisible();
   if (await disabled.isVisible()) return; // 운영 구성(NEWS_AI_ENABLED=false)
+
+  // 질문 칸을 누르면 서버에 미리 준비를 한 번 시킨다(PRD v6.15)
+  const warmup = page.waitForRequest((r) => r.url().endsWith("/api/steam/news/105600/ask/warmup") && r.method() === "POST");
+  await page.getByRole("textbox", { name: "질문" }).focus();
+  expect((await (await warmup).response())?.status()).toBe(202);
 
   await ask.click();
   await expect(page.getByText("답변 만드는 중…")).toBeHidden({ timeout: 150_000 });

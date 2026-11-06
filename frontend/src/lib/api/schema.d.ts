@@ -92,6 +92,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/me/news-feed": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * My News Feed
+         * @description 최근 플레이한 보유 게임들의 최신 공식 공지(PRD v6.15).
+         */
+        get: operations["my_news_feed_me_news_feed_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/me/library": {
         parameters: {
             query?: never;
@@ -208,6 +228,26 @@ export interface paths {
         put?: never;
         /** Ask News */
         post: operations["ask_news_steam_news_ask_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/steam/news/{appid}/ask/warmup": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Warmup Ask
+         * @description 질문 칸을 누르면 화면이 부른다: 공지 수집·검색 색인을 백그라운드로 미리 준비(PRD v6.15).
+         */
+        post: operations["warmup_ask_steam_news__appid__ask_warmup_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -447,6 +487,30 @@ export interface components {
              */
             calculatedAt: string;
         };
+        /** FeedItem */
+        FeedItem: {
+            /** Appid */
+            appid: number;
+            /** Gamename */
+            gameName: string;
+            /** Headerimage */
+            headerImage: string | null;
+            /** Gid */
+            gid: string;
+            /** Title */
+            title: string;
+            /**
+             * Publishedat
+             * Format: date-time
+             */
+            publishedAt: string;
+            /** Url */
+            url: string;
+            /** Externalurl */
+            externalUrl: string | null;
+            /** Scale */
+            scale: ("MAJOR" | "PATCH" | "HOTFIX") | null;
+        };
         /**
          * FetchStatus
          * @enum {string}
@@ -552,6 +616,20 @@ export interface components {
             total: number;
             /** Ratio */
             ratio: number;
+        };
+        /** NewsFeedResponse */
+        NewsFeedResponse: {
+            /** Items */
+            items: components["schemas"]["FeedItem"][];
+            /** Gamecount */
+            gameCount: number;
+            /** Failedcount */
+            failedCount: number;
+            /**
+             * Fetchedat
+             * Format: date-time
+             */
+            fetchedAt: string;
         };
         /** NewsItem */
         NewsItem: {
@@ -845,6 +923,15 @@ export interface components {
          * @enum {string}
          */
         ValueKind: "CURRENT" | "AT_VERSION" | "FIRST" | "WHEN" | "COUNT" | "DIFF" | "VERSIONS";
+        /** WarmupResponse */
+        WarmupResponse: {
+            status: components["schemas"]["WarmupStatus"];
+        };
+        /**
+         * WarmupStatus
+         * @enum {string}
+         */
+        WarmupStatus: "STARTED" | "READY";
         /**
          * WishlistStatus
          * @enum {string}
@@ -953,6 +1040,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ProfileResponse"];
+                };
+            };
+        };
+    };
+    my_news_feed_me_news_feed_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NewsFeedResponse"];
                 };
             };
         };
@@ -1133,6 +1240,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AskResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    warmup_ask_steam_news__appid__ask_warmup_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                appid: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WarmupResponse"];
                 };
             };
             /** @description Validation Error */

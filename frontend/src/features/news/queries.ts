@@ -1,6 +1,6 @@
 "use client";
 
-import { useInfiniteQuery, useMutation } from "@tanstack/react-query";
+import { useInfiniteQuery, useMutation, useQuery } from "@tanstack/react-query";
 
 import { ApiError, apiFetch, type Schemas } from "@/lib/api/client";
 
@@ -8,6 +8,7 @@ export type News = Schemas["NewsResponse"];
 export type NewsItem = Schemas["NewsItem"];
 export type AskRequest = Schemas["AskRequest"];
 export type AskResponse = Schemas["AskResponse"];
+export type NewsFeed = Schemas["NewsFeedResponse"];
 
 const PAGE_SIZE = 10;
 
@@ -35,4 +36,22 @@ export function useAskNews() {
         body: JSON.stringify(body),
       }),
   });
+}
+
+/** 내 게임 소식: 최근 플레이한 게임들의 최신 공지(PRD v6.15). 서버가 10분 캐시를 쓰므로 화면도 그만큼 둔다. */
+export function useNewsFeed(enabled: boolean) {
+  return useQuery({
+    queryKey: ["me", "news-feed"],
+    queryFn: () => apiFetch<NewsFeed>("/me/news-feed"),
+    enabled,
+    staleTime: 10 * 60_000,
+  });
+}
+
+/**
+ * 질문 칸을 누르면 서버에 공지 수집·검색 색인을 미리 시켜 첫 질문 대기를 줄인다(PRD v6.15).
+ * 결과를 기다리지 않고, 실패해도 무시한다(질문할 때 다시 준비하고 그때 오류를 알린다).
+ */
+export function warmupAsk(appid: number): void {
+  apiFetch(`/steam/news/${appid}/ask/warmup`, { method: "POST" }).catch(() => undefined);
 }

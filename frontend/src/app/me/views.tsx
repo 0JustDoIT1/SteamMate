@@ -1,5 +1,7 @@
 "use client";
 
+import NewsFeedPanel from "@/app/news/news-feed";
+
 import LibraryGate, { GameList, GenreDistribution, LibraryStats } from "./my-library";
 import MyDeals from "./my-deals";
 import OwnedRecommendations from "./my-recommendations";
@@ -39,7 +41,14 @@ export function OwnedGamesView() {
   return (
     <LibraryGate>
       {(library) =>
-        library.gameCount === 0 ? <p className="text-zinc-500">보유한 게임이 없습니다.</p> : <GameList library={library} />
+        library.gameCount === 0 ? (
+          <p className="text-zinc-500">보유한 게임이 없습니다.</p>
+        ) : (
+          <>
+            <NewsFeedPanel />
+            <GameList library={library} />
+          </>
+        )
       }
     </LibraryGate>
   );

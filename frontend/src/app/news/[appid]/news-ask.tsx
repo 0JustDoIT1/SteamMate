@@ -2,9 +2,9 @@
 
 import { Info, MessageCircleQuestion } from "lucide-react";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 
-import { type AskResponse, useAskNews } from "@/features/news/queries";
+import { type AskResponse, useAskNews, warmupAsk } from "@/features/news/queries";
 import { formatDateTime } from "@/lib/format";
 
 const MAX_QUESTION = 300;
@@ -42,6 +42,13 @@ function AskForm({ appid }: { appid: number }) {
   const ask = useAskNews();
   const [question, setQuestion] = useState("");
   const trimmed = question.trim();
+  // 질문할 생각이 보이면(칸 누름·버튼에 마우스) 한 번만 서버에 미리 준비를 시킨다. 페이지를 여는 것만으로는 하지 않는다
+  const warmed = useRef(false);
+  const warm = () => {
+    if (warmed.current) return;
+    warmed.current = true;
+    warmupAsk(appid);
+  };
 
   function submit(text: string) {
     if (!text || ask.isPending) return;
@@ -73,6 +80,8 @@ function AskForm({ appid }: { appid: number }) {
               key={t}
               type="button"
               disabled={ask.isPending}
+              onMouseEnter={warm}
+              onFocus={warm}
               onClick={() => {
                 setQuestion(t);
                 submit(t);
@@ -86,6 +95,7 @@ function AskForm({ appid }: { appid: number }) {
         <label className="block">
           <span className="sr-only">질문</span>
           <textarea
+            onFocus={warm}
             value={question}
             onChange={(e) => setQuestion(e.target.value)}
             maxLength={MAX_QUESTION}
