@@ -684,3 +684,55 @@ def test_schema_matches_parser_fields():
     for intent in QaIntent:
         # 상태·계산 결과는 서버가 채우는 칸이라 모델에 요구하지 않는다
         assert set(json_schema(intent)["required"]) == set(_MODELS[intent].model_fields) - SERVER_FIELDS
+
+
+# ---------------------------------------------------------------- 미리 준비(PRD v6.15)
+
+
+async def _wait_warm(app) -> None:
+    for _ in range(100):
+        if not app.state.qa._warming:
+            return
+        await asyncio.sleep(0.01)
+    raise AssertionError("warmup did not finish")
+
+
+async def test_warmup_disabled_by_default(client, steam_handler):
+    res = await client.post(f"/steam/news/{APPID}/ask/warmup")
+    assert res.status_code == 403 and res.json()["error"]["code"] == "FEATURE_DISABLED"
+
+
+async def test_warmup_builds_index_once_and_question_reuses_it(ai_client, steam_handler, fake_llm):
+    filler = "[p]" + "Bug fixes and stability improvements. " * 60 + "[/p]"  # 공지가 많아 RAG가 필요한 게임
+    notes = [item(str(4000 + i), OLD + i * 3600, f"Patch {i}", filler) for i in range(20)]
+    notes.append(item("4999", NEW, "Patch final", "[p]Arc Lance: damage changed from 46 to 48.[/p]"))
+    calls: list = []
+    steam_handler["fn"] = news_handler(sorted(notes, key=lambda n: -n["date"]), calls)
+
+    res = await ai_client.post(f"/steam/news/{APPID}/ask/warmup")
+    assert res.status_code == 202 and res.json() == {"status": "STARTED"}
+    await _wait_warm(ai_client.app)
+    assert len(fake_llm.embeds) == 1 and fake_llm.chats == []  # 색인만 만들고 답은 만들지 않는다
+    assert (await ai_client.post(f"/steam/news/{APPID}/ask/warmup")).json() == {"status": "READY"}
+
+    fake_llm.reply = value_reply("48", ["N021"])
+    body = (await ai_client.post("/steam/news/ask", json=ask())).json()
+    assert body["mode"] == "RAG" and body["value"]["value"] == "48"
+    assert len(fake_llm.embeds) == 2 and fake_llm.embeds[-1] == ["Arc Lance 피해량은?"]  # 질문 임베딩만 더해짐
+    assert len(calls) == 1  # 공지도 다시 받지 않는다
+
+
+async def test_warmup_small_corpus_needs_no_index(ai_client, steam_handler, fake_llm):
+    steam_handler["fn"] = news_handler(two_notes())
+    await ai_client.post(f"/steam/news/{APPID}/ask/warmup")
+    await _wait_warm(ai_client.app)
+    assert fake_llm.embeds == []  # 공지 전체를 넣는 게임은 색인이 필요 없다
+    assert (await ai_client.post(f"/steam/news/{APPID}/ask/warmup")).json() == {"status": "READY"}
+
+
+async def test_warmup_and_question_share_one_corpus_fetch(ai_client, steam_handler, fake_llm):
+    calls: list = []
+    steam_handler["fn"] = news_handler(two_notes(), calls)
+    await asyncio.gather(ai_client.post(f"/steam/news/{APPID}/ask/warmup"), ai_client.post("/steam/news/ask", json=ask()))
+    await _wait_warm(ai_client.app)
+    assert len(calls) == 1  # 동시에 와도 공지는 한 번만 받는다

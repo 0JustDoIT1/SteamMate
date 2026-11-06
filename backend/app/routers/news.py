@@ -6,7 +6,7 @@ from app.config import get_settings
 from app.deps import get_news, get_qa
 from app.errors import AppError, ErrorCode
 from app.news import NewsResponse, NewsService
-from app.qa.service import AskRequest, AskResponse, NewsQaService
+from app.qa.service import AskRequest, AskResponse, NewsQaService, WarmupResponse
 
 # 게임 공식 뉴스는 공개 데이터라 로그인 없이 볼 수 있다.
 router = APIRouter(prefix="/steam", tags=["news"])
@@ -30,3 +30,13 @@ async def ask_news(body: AskRequest, qa: Annotated[NewsQaService, Depends(get_qa
     if not get_settings().news_ai_enabled:
         raise AppError(ErrorCode.FEATURE_DISABLED, "이 환경에서는 뉴스 AI 질문을 제공하지 않습니다.", 403)
     return await qa.ask(body)
+
+
+@router.post("/news/{appid}/ask/warmup", response_model=WarmupResponse, status_code=202)
+async def warmup_ask(
+    appid: Annotated[int, Path(gt=0, le=2_147_483_647)], qa: Annotated[NewsQaService, Depends(get_qa)]
+) -> WarmupResponse:
+    """질문 칸을 누르면 화면이 부른다: 공지 수집·검색 색인을 백그라운드로 미리 준비(PRD v6.15)."""
+    if not get_settings().news_ai_enabled:
+        raise AppError(ErrorCode.FEATURE_DISABLED, "이 환경에서는 뉴스 AI 질문을 제공하지 않습니다.", 403)
+    return WarmupResponse(status=qa.warmup(appid))

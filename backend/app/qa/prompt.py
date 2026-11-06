@@ -30,6 +30,22 @@ _MAJOR_TITLE = re.compile(r"expansion|major update|대형 업데이트|확장팩
 _VERSION = re.compile(r"(?<![\d.])v?(\d+)\.(\d+)((?:\.\d+){0,2})(?![\w.])", re.IGNORECASE)  # "7.41f"는 버전으로 보지 않음
 
 
+# "Update"가 들어가도 패치가 아닌 소식 글(버전 번호가 없을 때만): PUBG "[Dev Letter] Anti-Cheat Update" 등.
+# 소식 화면의 규모 표시에만 쓴다 — 최신 업데이트 판정(latest_update_id)에 넣으면 실험 결과가 달라져 재실험이 필요하다
+_NEWS_NOT_PATCH = re.compile(
+    r"dev(eloper)?\s*(letter|diary|update)|community\s*(update|event)|roadmap|anti-?cheat|state of the game|"
+    r"q\s*&\s*a|weekly bans|ban notice",
+    re.IGNORECASE,
+)
+
+
+def is_patch_title(title: str) -> bool:
+    """패치·업데이트 공지 꼴 제목인가(버전 번호·업데이트·패치·핫픽스, 상점·드롭·굿즈 글과 버전 없는 소식 글 제외)."""
+    if _PATCH_TITLE.search(title) is None or _NOT_UPDATE_TITLE.search(title) is not None:
+        return False
+    return _VERSION.search(title) is not None or _NEWS_NOT_PATCH.search(title) is None
+
+
 def is_test_build(title: str) -> bool:
     return _TEST_TITLE.search(title) is not None
 

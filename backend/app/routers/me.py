@@ -9,6 +9,7 @@ from app.deals import DealsResponse, fetch_deals
 from app.deps import (
     current_steam_id,
     get_metadata,
+    get_news,
     get_owned_cache,
     get_prices,
     get_profile_cache,
@@ -16,6 +17,8 @@ from app.deps import (
 )
 from app.library import LibraryResponse, fetch_library
 from app.metadata.service import MetadataLookup
+from app.news import NewsService
+from app.news_feed import NewsFeedResponse, fetch_news_feed
 from app.owned_cache import OwnedGamesCache
 from app.prices import PriceLookup
 from app.profile import ProfileCache, ProfileResponse
@@ -38,6 +41,17 @@ async def my_profile(
 ) -> ProfileResponse:
     """위쪽 바의 닉네임·프로필 사진(공개 프로필 요약). 10분 메모리 캐시."""
     return await profiles.get(api, steam_id)
+
+
+@router.get("/news-feed", response_model=NewsFeedResponse)
+async def my_news_feed(
+    steam_id: Annotated[str, Depends(current_steam_id)],
+    api: Annotated[SteamWebApi, Depends(get_steam_api)],
+    owned_cache: Annotated[OwnedGamesCache, Depends(get_owned_cache)],
+    news: Annotated[NewsService, Depends(get_news)],
+) -> NewsFeedResponse:
+    """최근 플레이한 보유 게임들의 최신 공식 공지(PRD v6.15)."""
+    return await fetch_news_feed(api, owned_cache, news, steam_id)
 
 
 @router.get("/library", response_model=LibraryResponse)

@@ -76,6 +76,15 @@ REFUSAL_ANSWERS = {
 }
 
 
+class WarmupStatus(StrEnum):
+    STARTED = "STARTED"  # 지금 준비를 시작했거나 이미 준비 중
+    READY = "READY"  # 이미 준비돼 있음(공지·필요하면 색인까지)
+
+
+class WarmupResponse(CamelModel):
+    status: WarmupStatus
+
+
 class QaMode(StrEnum):
     FULL_CONTEXT = "FULL_CONTEXT"
     RAG = "RAG"
@@ -258,6 +267,41 @@ class NewsQaService:
         self._policy = policy
         self._cache: TTLCache[int, _Corpus] = TTLCache(maxsize=32, ttl=policy.cache_seconds)
         self._gpu = asyncio.Lock()
+        # 같은 게임의 공지 수집이 겹치면(미리 준비 + 질문) 한 번만 받는다
+        self._loading: dict[int, asyncio.Task[_Corpus]] = {}
+        # 미리 준비 중인 게임(백그라운드 작업 참조를 쥐어 가비지 수집을 막는다)
+        self._warming: dict[int, asyncio.Task[None]] = {}
+
+    def warmup(self, appid: int) -> WarmupStatus:
+        """질문 전에 공지 수집과(필요하면) 검색 색인을 백그라운드로 준비한다(PRD v6.15). 질문 칸을 누를 때 부른다 —
+        첫 질문이 공지 수집·임베딩까지 기다리던 15~20초를 줄인다. 이미 준비 중이거나 준비됐으면 다시 하지 않는다."""
+        if appid in self._warming:
+            return WarmupStatus.STARTED
+        corpus = self._cache.get(appid)
+        if corpus is not None and (corpus.index is not None or not self._needs_rag(corpus)):
+            return WarmupStatus.READY
+        task = asyncio.create_task(self._warm(appid))
+        self._warming[appid] = task
+        task.add_done_callback(lambda _: self._warming.pop(appid, None))
+        return WarmupStatus.STARTED
+
+    async def _warm(self, appid: int) -> None:
+        try:
+            corpus = await self._corpus(appid)
+            if corpus.docs and self._needs_rag(corpus):
+                # 질문과 같은 GPU 잠금 안에서 만든다 — 질문이 오면 색인이 끝날 때까지 기다렸다가 그대로 쓴다
+                async with self._gpu:
+                    await self._ensure_index(corpus)
+        except (AppError, ValueError) as exc:  # 준비는 실패해도 괜찮다(질문 때 다시 시도하고 그때 오류를 알린다)
+            logger.warning("qa warmup failed: appid=%s %s", appid, type(exc).__name__)
+
+    def _needs_rag(self, corpus: "_Corpus") -> bool:
+        return self.estimate_tokens(corpus.text(mark_latest_doc=False)) > self._policy.full_context_max_tokens
+
+    async def _ensure_index(self, corpus: "_Corpus") -> None:
+        if corpus.index is None:
+            chunks = [c for d in corpus.docs for c in chunk_doc(d.id, d.news.title, d.day, d.news.text)]
+            corpus.index = VectorIndex(chunks, await self.llm.embed([c.text for c in chunks]))
 
     def estimate_tokens(self, text: str) -> int:
         return int(len(text) / self._policy.chars_per_token) + 1
@@ -364,9 +408,7 @@ class NewsQaService:
         summary = intent is QaIntent.UPDATE_SUMMARY
         recent = corpus.recent_ids if intent in RECENCY_INTENTS else []
         try:
-            if corpus.index is None:
-                chunks = [c for d in corpus.docs for c in chunk_doc(d.id, d.news.title, d.day, d.news.text)]
-                corpus.index = VectorIndex(chunks, await self.llm.embed([c.text for c in chunks]))
+            await self._ensure_index(corpus)
             (query,) = await self.llm.embed([question])
             pinned = corpus.latest_id if summary else None
             names = target_names(question) if intent is QaIntent.VALUE else []
@@ -387,6 +429,14 @@ class NewsQaService:
         cached = self._cache.get(appid)
         if cached is not None:
             return cached
+        task = self._loading.get(appid)
+        if task is None:
+            task = asyncio.create_task(self._load_corpus(appid))
+            self._loading[appid] = task
+            task.add_done_callback(lambda _: self._loading.pop(appid, None))
+        return await task
+
+    async def _load_corpus(self, appid: int) -> _Corpus:
         news = await self._news.fetch_full(appid, self._policy.max_docs, None)
         news.sort(key=lambda n: n.published_at)
         docs = [_Doc(f"N{i + 1:03d}", replace(n, text=strip_rules(n.text))) for i, n in enumerate(news)]
