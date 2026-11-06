@@ -136,7 +136,7 @@ def recommend(
             reasons.append(
                 Reason(
                     factor=ReasonFactor.LOW_GENRE_COVERAGE,
-                    detail=f"장르 정보 수집 중({coverage_ratio:.0%}) — 조금 해 본 게임만 플레이 기록으로 추천",
+                    detail=f"내 게임의 장르를 확인하는 중({coverage_ratio:.0%})이라 조금 해 본 게임만 플레이 기록으로 골랐어요",
                     contribution=0.0,
                 )
             )

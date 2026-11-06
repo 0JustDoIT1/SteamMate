@@ -114,7 +114,7 @@ def recommend_store(
             reasons.append(
                 Reason(
                     factor=ReasonFactor.LOW_GENRE_COVERAGE,
-                    detail=f"내 장르 정보 수집 중({coverage_ratio:.0%}) — 인기 순으로 추천",
+                    detail=f"내 게임의 장르를 확인하는 중({coverage_ratio:.0%})이라 인기 순으로 골랐어요",
                     contribution=0.0,
                 )
             )
@@ -136,7 +136,7 @@ def recommend_store(
 
 def _popular_detail(entry: PoolEntry) -> str:
     label = SOURCE_LABEL[entry.source]
-    return f"{label} {entry.best_rank}위" if entry.source in RANKED else f"Steam {label}"
+    return f"{label} {entry.best_rank}위" if entry.source in RANKED else f"Steam {label}에 오름"
 
 
 def _top_genres(preference: Mapping[str, float], genres, label: Callable[[str], str], n: int = 2) -> str | None:

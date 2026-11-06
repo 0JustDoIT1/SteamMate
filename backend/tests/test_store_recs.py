@@ -71,7 +71,7 @@ def test_genre_aware_scores():
     top = recs[0]
     assert [(r.factor, r.detail) for r in top.reasons] == [
         (ReasonFactor.GENRE_MATCH, "RPG, 액션"),
-        (ReasonFactor.POPULAR, "Steam 할인 게임 목록"),
+        (ReasonFactor.POPULAR, "Steam 할인 게임 목록에 오름"),
     ]
     assert recs[1].reasons[1].detail == "주간 접속 순위 10위"
     assert top.price.discount_percent == 50 and top.store_url.endswith("/app/3/")
