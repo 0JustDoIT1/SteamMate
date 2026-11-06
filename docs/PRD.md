@@ -33,6 +33,8 @@
 > **v6.14 (2026-11-06, 사용자 승인)**: 화면 개편 — 어두운 남색·보라 강조 디자인, 아이콘 `lucide-react`(사용자 선택). 내 라이브러리의 탭을 사이드바 메뉴별 페이지로 분리(`/me`, `/me/store`, `/me/deals`, `/me/genres`, `/news`), 로그인 전에는 로그인이 필요한 메뉴를 숨긴다. 위쪽 바에 내 Steam 닉네임·프로필 사진(`GET /me/profile`, 공개 프로필 요약, 메모리 10분).
 >
 > **v6.15 (2026-11-06, 사용자 승인)**: ① AI 질문 미리 준비 — 질문 칸을 누르거나 질문 버튼에 마우스를 올리면 `POST /steam/news/{appid}/ask/warmup`으로 공지 수집과(필요하면) 검색 색인을 백그라운드로 준비(첫 질문 대기 단축, 페이지만 열어서는 시작하지 않음, 중복 준비 없음, 기능 OFF면 403). ② 내 게임 소식 — `GET /me/news-feed`: 최근 플레이한 보유 게임 10개의 최신 공지를 게임당 3개씩 모아 날짜순 20개, 패치 꼴 제목은 규모 표시. `/news` 맨 위에 둔다.
+>
+> **v6.16 (2026-11-06, 사용자 승인)**: "거의 다 깬 게임" — `GET /me/achievements`: 2시간 이상 플레이한 보유 게임 중 플레이 시간 상위 30개의 Steam 업적 달성률로, 60% 이상 100% 미만을 달성률 순 5개(남은 업적 이름 최대 3개, 한국어) + 완료한 게임 수 + 업적 비공개 안내. 업적 없는 게임·오류는 건너뜀, 저장하지 않고 메모리 6시간. `/me`에 "마무리해 볼 게임" 칸.
 
 ---
 
@@ -191,7 +193,7 @@ Browser ─ Next.js (App Router, client: TanStack Query + Zustand)
 ## 프론트엔드 상태 관리
 - **TanStack Query**: 서버 데이터 전부(`['me']`(로그인 상태), `['library']`, `['recs',opts]`, `['deals',cc]`, `['dashboard',cc]`, `['news',appid]`, `useMutation(ask)`). coverage < 100%면 `refetchInterval` 폴링.
 - **Zustand**: 전역 클라이언트 상태(`recOptions`, `excludedAppids`(persist), `selectedAppid`, `cc`). 로그인 상태·steamId를 포함한 서버 데이터를 복제하지 않는다. 클라이언트 컴포넌트에서만 사용.
-- 화면(v6.14): 왼쪽 사이드바 메뉴마다 한 페이지 — `/` 인기 대시보드, `/me` 내 라이브러리(통계·보유 게임 추천), `/me/store` 구매 추천, `/me/deals` 할인, `/me/genres` 장르 취향, `/news` 공식 뉴스(내 게임 소식 + 보유 게임 목록·검색·정렬) → `/news/[appid]` 뉴스·질문. 로그인 전에는 대시보드만 보이고 로그인 안내를 둔다. 위쪽 바에 내 Steam 닉네임·프로필 사진과 로그인·로그아웃.
+- 화면(v6.14): 왼쪽 사이드바 메뉴마다 한 페이지 — `/` 인기 대시보드, `/me` 내 라이브러리(통계·보유 게임 추천·마무리해 볼 게임), `/me/store` 구매 추천, `/me/deals` 할인, `/me/genres` 장르 취향, `/news` 공식 뉴스(내 게임 소식 + 보유 게임 목록·검색·정렬) → `/news/[appid]` 뉴스·질문. 로그인 전에는 대시보드만 보이고 로그인 안내를 둔다. 위쪽 바에 내 Steam 닉네임·프로필 사진과 로그인·로그아웃.
 
 ---
 
@@ -242,6 +244,7 @@ Browser ─ Next.js (App Router, client: TanStack Query + Zustand)
 | POST | `/auth/logout` | — | 쿠키 삭제 |
 | GET | `/me/profile` | 필수 | `{steamId, personaName?, avatarUrl?, profileUrl?}`(공개 프로필 요약, 메모리 10분, 사진·프로필 주소는 Steam 도메인 https만) |
 | GET | `/me/news-feed` | 필수 | `{items[{appid, gameName, headerImage?, gid, title, publishedAt, url, externalUrl?, scale?(MAJOR·PATCH·HOTFIX)}], gameCount, failedCount, fetchedAt}`(최근 플레이 게임 10개 × 공지 3개, 날짜순 20개, 뉴스 발췌 캐시 공유, 일부 게임 실패 허용, v6.15) |
+| GET | `/me/achievements` | 필수 | `{status(OK·PRIVATE), nearlyDone[{appid, name, headerImage?, achieved, total, remaining[]}], completedCount, checkedCount}`(플레이 2시간 이상 상위 30개, 60~99%, 메모리 6시간, v6.16) |
 | GET | `/me/library` | 필수 | 본인 공개 게임·플레이시간·장르 분포·`metadataCoverage` |
 | GET | `/me/recommendations?exclude=` | 필수 | 보유 게임 TOP3 + reasons + 모드·스냅샷 |
 | GET | `/me/store-recommendations?onSaleOnly=` | 필수 | 미보유 게임 TOP10 + reasons·가격·`wishlisted`, `candidatePoolSize`, `candidateCount`, `metadataPending`, `pricePending`, 모드, `poolSnapshotAt`, `priceSnapshotAt`. 수집 전 `DATA_NOT_READY` |
