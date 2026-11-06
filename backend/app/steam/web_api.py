@@ -1,6 +1,7 @@
 """Steam Web API(api.steampowered.com) 클라이언트. 응답은 Pydantic으로 검증한다."""
 
 import logging
+from dataclasses import dataclass
 from typing import Any, TypeVar
 
 import httpx
@@ -55,6 +56,18 @@ class AchievementsPrivate(Exception):
 class SchemaAchievement(_Loose):
     name: str = ""
     displayName: str = ""
+    hidden: int = 0
+    # 미달성(회색) 아이콘 주소(Steam CDN)
+    icongray: str = ""
+
+
+@dataclass(frozen=True)
+class AchievementInfo:
+    """업적 표시 정보. icon은 https 주소만(아니면 None)."""
+
+    name: str
+    icon: str | None
+    hidden: bool
 
 
 class SchemaStats(_Loose):
@@ -157,12 +170,20 @@ class SteamWebApi:
             return None
         return [(str(a.get("apiname", "")), bool(a.get("achieved"))) for a in items if isinstance(a, dict)]
 
-    async def get_achievement_names(self, appid: int, language: str = "koreana") -> dict[str, str]:
-        """업적 이름(apiname) → 표시 이름(가능하면 한국어). 없으면 빈 사전."""
+    async def get_achievement_schema(self, appid: int, language: str = "koreana") -> dict[str, AchievementInfo]:
+        """업적 이름(apiname) → 표시 이름(가능하면 한국어)·회색 아이콘·숨김 여부. 없으면 빈 사전."""
         data = await self._get("/ISteamUserStats/GetSchemaForGame/v2/", {"appid": appid, "l": language}, SchemaResponse)
         game = data.game
         achievements = game.availableGameStats.achievements if game and game.availableGameStats else []
-        return {a.name: a.displayName for a in achievements if a.name and a.displayName}
+        return {
+            a.name: AchievementInfo(
+                name=a.displayName,
+                icon=a.icongray if a.icongray.startswith("https://") else None,
+                hidden=bool(a.hidden),
+            )
+            for a in achievements
+            if a.name and a.displayName
+        }
 
     async def _get(self, path: str, params: dict[str, Any], model: type[T], with_key: bool = True) -> T:
         try:

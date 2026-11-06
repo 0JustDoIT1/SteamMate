@@ -1,4 +1,4 @@
-"""거의 다 깬 게임(PRD v6.16): 대상 고르기, 60~99% 순위, 남은 업적 이름, 비공개, 캐시, 한 게임 실패."""
+"""거의 다 깬 게임(PRD v6.16·v6.17): 대상 고르기, 60~99% 순위, 남은 업적 이름·아이콘·숨김, 비공개, 캐시, 한 게임 실패."""
 
 import httpx
 
@@ -19,7 +19,8 @@ def ach(done: int, total: int) -> dict:
         {"apiname": f"A{i}", "achieved": 1 if i < done else 0} for i in range(total)]}}
 
 
-def steam(owned_body: dict, by_appid: dict[int, dict | httpx.Response], names: dict[int, dict[str, str]] | None = None):
+def steam(owned_body: dict, by_appid: dict[int, dict | httpx.Response], names: dict[int, dict[str, str | dict]] | None = None):
+    """names: appid → {apiname: 표시 이름 또는 GetSchemaForGame 업적 항목(dict, displayName·icongray·hidden)}"""
     calls: list[tuple[str, int]] = []
 
     def fn(request: httpx.Request) -> httpx.Response:
@@ -29,7 +30,9 @@ def steam(owned_body: dict, by_appid: dict[int, dict | httpx.Response], names: d
         appid = int(request.url.params["appid"])
         calls.append((path, appid))
         if path == SCHEMA:
-            achievements = [{"name": k, "displayName": v} for k, v in (names or {}).get(appid, {}).items()]
+            achievements = [
+                {"name": k, **(v if isinstance(v, dict) else {"displayName": v})} for k, v in (names or {}).get(appid, {}).items()
+            ]
             return httpx.Response(200, json={"game": {"availableGameStats": {"achievements": achievements}}})
         assert path == ACH
         result = by_appid[appid]
@@ -65,7 +68,8 @@ async def test_nearly_done_ranked_with_remaining_names(client, login, steam_hand
     # 30분만 한 게임도 업적을 90% 모았으면 들어간다(보유 게임 전부 확인)
     assert [(g["name"], g["achieved"], g["total"]) for g in body["nearlyDone"]] == [
         ("PUBG", 35, 37), ("Short", 9, 10), ("FM24", 74, 100)]
-    assert body["nearlyDone"][0]["remaining"] == ["치킨 10번", "탑 10 100번"]  # 아직 안 한 업적 이름(한국어)
+    remaining = body["nearlyDone"][0]["remaining"]  # 아직 안 한 업적 이름(한국어)
+    assert [r["name"] for r in remaining] == ["치킨 10번", "탑 10 100번"]
     assert body["nearlyDone"][2]["remaining"] == []  # 이름을 못 받아도 진행률은 보인다
     assert body["completedCount"] == 1  # Warhammer 100%
     assert body["checkedCount"] == 6  # 업적 없는 RimWorld 제외, 59% BG3·0% Siege는 확인만
@@ -91,3 +95,25 @@ async def test_cached_and_failed_game_retried_later(client, login, steam_handler
     ach_calls = [a for p, a in fn.calls if p == ACH]
     assert ach_calls.count(1) == 1  # 성공한 게임은 캐시(6시간)
     assert ach_calls.count(2) == 2  # 실패한 게임은 캐시하지 않고 다시 시도
+
+
+async def test_remaining_icons_and_hidden_achievements(client, login, steam_handler):
+    """v6.17: 남은 업적의 회색 아이콘, 숨겨진 업적은 이름·아이콘을 감춘다, https가 아닌 아이콘 주소는 버린다."""
+    icon = "https://cdn.akamai.steamstatic.com/steamcommunity/public/images/apps/1/a7.jpg"
+    steam_handler["fn"] = steam(
+        owned((1, "PUBG", 1000)),
+        {1: ach(7, 10)},
+        names={1: {
+            "A6": {"displayName": "이미 딴 업적", "icongray": icon},
+            "A7": {"displayName": "치킨 10번", "icongray": icon, "hidden": 0},
+            "A8": {"displayName": "비밀 엔딩", "icongray": icon, "hidden": 1},
+            "A9": {"displayName": "이상한 주소", "icongray": "javascript:alert(1)"},
+        }},
+    )
+    login()
+    body = (await client.get("/me/achievements")).json()
+    assert body["nearlyDone"][0]["remaining"] == [
+        {"name": "치킨 10번", "icon": icon, "hidden": False},
+        {"name": None, "icon": None, "hidden": True},
+        {"name": "이상한 주소", "icon": None, "hidden": False},
+    ]
