@@ -2,6 +2,7 @@
 
 import NewsFeedPanel from "@/app/news/news-feed";
 
+import NearlyDoneGames from "./my-achievements";
 import LibraryGate, { GameList, GenreDistribution, LibraryStats } from "./my-library";
 import MyDeals from "./my-deals";
 import OwnedRecommendations from "./my-recommendations";
@@ -18,7 +19,14 @@ export function LibraryHomeView() {
       {(library) => (
         <>
           <LibraryStats library={library} />
-          {library.gameCount === 0 ? <p className="text-zinc-500">보유한 게임이 없습니다.</p> : <OwnedRecommendations />}
+          {library.gameCount === 0 ? (
+            <p className="text-zinc-500">보유한 게임이 없습니다.</p>
+          ) : (
+            <>
+              <OwnedRecommendations />
+              <NearlyDoneGames />
+            </>
+          )}
         </>
       )}
     </LibraryGate>

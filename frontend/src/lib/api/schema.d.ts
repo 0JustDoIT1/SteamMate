@@ -112,6 +112,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/me/achievements": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * My Achievements
+         * @description 거의 다 깬 게임(업적 달성률 60~99%)과 완료한 게임 수(PRD v6.16). 메모리 6시간.
+         */
+        get: operations["my_achievements_me_achievements_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/me/library": {
         parameters: {
             query?: never;
@@ -292,6 +312,26 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /**
+         * AchievementStatus
+         * @enum {string}
+         */
+        AchievementStatus: "OK" | "PRIVATE";
+        /** AchievementsResponse */
+        AchievementsResponse: {
+            status: components["schemas"]["AchievementStatus"];
+            /** Nearlydone */
+            nearlyDone: components["schemas"]["NearlyDoneGame"][];
+            /** Completedcount */
+            completedCount: number;
+            /** Checkedcount */
+            checkedCount: number;
+            /**
+             * Fetchedat
+             * Format: date-time
+             */
+            fetchedAt: string;
+        };
         /** AskRequest */
         AskRequest: {
             /** Appid */
@@ -616,6 +656,21 @@ export interface components {
             total: number;
             /** Ratio */
             ratio: number;
+        };
+        /** NearlyDoneGame */
+        NearlyDoneGame: {
+            /** Appid */
+            appid: number;
+            /** Name */
+            name: string;
+            /** Headerimage */
+            headerImage: string | null;
+            /** Achieved */
+            achieved: number;
+            /** Total */
+            total: number;
+            /** Remaining */
+            remaining: string[];
         };
         /** NewsFeedResponse */
         NewsFeedResponse: {
@@ -1060,6 +1115,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["NewsFeedResponse"];
+                };
+            };
+        };
+    };
+    my_achievements_me_achievements_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AchievementsResponse"];
                 };
             };
         };

@@ -21,6 +21,13 @@ test("내 라이브러리: 요약과 보유 게임 추천(점수·이유)", asyn
   const section = page.locator("section", { has: recs });
   await expect(section.getByText(/후보 \d+개 중 상위/)).toBeVisible({ timeout: 60_000 });
   await expect(section.locator("ol > li").first()).toContainText(/점/);
+
+  // 마무리해 볼 게임(업적): 진행 막대 또는 비공개·없음 안내 중 하나
+  const nearly = page.locator("section", { has: page.getByRole("heading", { name: "마무리해 볼 게임" }) });
+  await expect(nearly.getByRole("progressbar").first().or(nearly.getByText(/비공개|게임이 없습니다/))).toBeVisible({
+    timeout: 60_000,
+  });
+  await expect(nearly.getByRole("alert")).toHaveCount(0);
 });
 
 test("사이드바 메뉴마다 한 페이지: 구매 추천·할인·장르 취향", async ({ page }) => {

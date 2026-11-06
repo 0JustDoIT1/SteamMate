@@ -13,6 +13,7 @@ export type StoreRecommendations = Schemas["StoreRecommendationsResponse"];
 export type StoreRecommendation = Schemas["StoreRecommendation"];
 export type Deals = Schemas["DealsResponse"];
 export type DealItem = Schemas["DealItem"];
+export type Achievements = Schemas["AchievementsResponse"];
 
 const POLL_MS = 5_000;
 // 메타데이터가 계속 PENDING이어도 무한히 묻지 않도록 약 5분에서 멈춘다.
@@ -81,5 +82,15 @@ export function useMyDeals(enabled: boolean) {
     enabled,
     refetchInterval: pollWhile((d: Deals) => d.pricePending > 0),
     retry: retryUnlessUserError,
+  });
+}
+
+/** 거의 다 깬 게임(업적 달성률 60~99%, PRD v6.16). 서버가 6시간 캐시하므로 화면도 오래 둔다. */
+export function useMyAchievements(enabled: boolean) {
+  return useQuery({
+    queryKey: ["me", "achievements"],
+    queryFn: () => apiFetch<Achievements>("/me/achievements"),
+    enabled,
+    staleTime: 30 * 60_000,
   });
 }
