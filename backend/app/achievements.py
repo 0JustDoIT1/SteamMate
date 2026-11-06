@@ -1,6 +1,8 @@
 """거의 다 깬 게임(PRD v6.16): 보유 게임의 Steam 업적 달성률로 "조금만 더 하면 완료"인 게임을 고른다.
 
-- 대상: 2시간 이상 플레이한 게임 중 플레이 시간 상위 CANDIDATES개(게임마다 업적 API 한 번).
+- 대상: 한 번이라도 실행한 보유 게임 전부(게임마다 업적 API 한 번, 사용자 요청 — 플레이 시간 상위만 보면
+  조금만 하고 업적을 거의 다 모은 게임이 빠져 "거의 다 깬 게임"이라는 취지와 맞지 않았다).
+  아주 큰 라이브러리에서 호출이 끝없이 늘지 않게 MAX_GAMES개에서 자른다(플레이 시간 순).
 - 결과: 달성률 MIN_RATE 이상 100% 미만을 달성률 순 SHOWN개 + 남은 업적 이름(한국어, 최대 REMAINING_SHOWN개).
   업적이 없는 게임·0%·오류는 건너뛴다. 0%이면서 오래 한 게임은 업적을 Steam 밖에서 관리하는 경우가 있다(R6 Siege).
 - 저장하지 않는다(개인 데이터). 사용자·게임별 업적과 게임별 업적 이름을 메모리에 CACHE_SECONDS 동안 둔다.
@@ -23,12 +25,11 @@ from app.steam.web_api import AchievementsPrivate, SteamWebApi
 
 logger = logging.getLogger(__name__)
 
-MIN_PLAYTIME_MINUTES = 120
-CANDIDATES = 30
+MAX_GAMES = 500
 MIN_RATE = 0.6
 SHOWN = 5
 REMAINING_SHOWN = 3
-CONCURRENCY = 4
+CONCURRENCY = 8
 CACHE_SECONDS = 6 * 3600
 
 
@@ -70,9 +71,9 @@ class AchievementsService:
     ) -> AchievementsResponse:
         owned = await load_owned_games(api, owned_cache, steam_id)
         candidates = sorted(
-            (g for g in owned if g.playtime_forever >= MIN_PLAYTIME_MINUTES),
+            (g for g in owned if g.playtime_forever > 0),  # 한 번도 안 한 게임은 업적이 0개라 부르지 않는다
             key=lambda g: (-g.playtime_forever, g.appid),
-        )[:CANDIDATES]
+        )[:MAX_GAMES]
         gate = asyncio.Semaphore(CONCURRENCY)
         private = False
 

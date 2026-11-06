@@ -93,7 +93,7 @@ export default function NearlyDoneGames() {
         )}
         {data && data.status === "OK" ? (
           <p className="mt-3 text-xs text-zinc-500">
-            플레이 시간 상위 게임 {data.checkedCount}개의 업적 확인 · 모든 업적을 달성한 게임 {data.completedCount}개
+            보유 게임 {data.checkedCount}개의 업적 확인 · 모든 업적을 달성한 게임 {data.completedCount}개
           </p>
         ) : null}
       </div>
