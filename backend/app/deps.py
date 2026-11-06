@@ -3,6 +3,7 @@
 import httpx
 from fastapi import Request
 
+from app.achievements import AchievementsService
 from app.auth.session import COOKIE_NAME, SessionManager
 from app.auth.steam_openid import NonceStore
 from app.config import get_settings
@@ -31,6 +32,10 @@ def get_nonces(request: Request) -> NonceStore:
 
 def get_metadata(request: Request) -> MetadataLookup:
     return request.app.state.metadata
+
+
+def get_achievements(request: Request) -> AchievementsService:
+    return request.app.state.achievements
 
 
 def get_profile_cache(request: Request) -> ProfileCache:

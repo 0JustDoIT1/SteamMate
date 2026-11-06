@@ -9,6 +9,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
 
+from app.achievements import AchievementsService
 from app.auth.session import SessionManager
 from app.auth.steam_openid import NonceStore
 from app.config import Settings, get_settings
@@ -142,6 +143,7 @@ def create_app(
     app.state.nonces = NonceStore()
     app.state.owned = OwnedGamesCache(settings.owned_cache_ttl_seconds)
     app.state.profiles = ProfileCache()
+    app.state.achievements = AchievementsService()
     store_limiter = build_store_limiter(settings)
     app.state.metadata = metadata or build_metadata_service(settings, app.state.http, store_limiter)
     app.state.prices = prices or build_price_service(settings, app.state.http, store_limiter)

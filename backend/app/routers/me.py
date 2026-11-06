@@ -3,11 +3,13 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Query
 from pydantic import Field
 
+from app.achievements import AchievementsResponse, AchievementsService
 from app.config import get_settings
 from app.db import get_sessionmaker
 from app.deals import DealsResponse, fetch_deals
 from app.deps import (
     current_steam_id,
+    get_achievements,
     get_metadata,
     get_news,
     get_owned_cache,
@@ -52,6 +54,18 @@ async def my_news_feed(
 ) -> NewsFeedResponse:
     """최근 플레이한 보유 게임들의 최신 공식 공지(PRD v6.15)."""
     return await fetch_news_feed(api, owned_cache, news, steam_id)
+
+
+@router.get("/achievements", response_model=AchievementsResponse)
+async def my_achievements(
+    steam_id: Annotated[str, Depends(current_steam_id)],
+    api: Annotated[SteamWebApi, Depends(get_steam_api)],
+    owned_cache: Annotated[OwnedGamesCache, Depends(get_owned_cache)],
+    metadata: Annotated[MetadataLookup, Depends(get_metadata)],
+    achievements: Annotated[AchievementsService, Depends(get_achievements)],
+) -> AchievementsResponse:
+    """거의 다 깬 게임(업적 달성률 60~99%)과 완료한 게임 수(PRD v6.16). 메모리 6시간."""
+    return await achievements.fetch(api, owned_cache, metadata, steam_id)
 
 
 @router.get("/library", response_model=LibraryResponse)

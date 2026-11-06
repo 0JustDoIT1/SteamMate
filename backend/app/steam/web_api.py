@@ -48,6 +48,27 @@ class PlayerSummary(_Loose):
     profileurl: str | None = None
 
 
+class AchievementsPrivate(Exception):
+    """사용자의 Steam 업적(게임 세부 정보)이 비공개."""
+
+
+class SchemaAchievement(_Loose):
+    name: str = ""
+    displayName: str = ""
+
+
+class SchemaStats(_Loose):
+    achievements: list[SchemaAchievement] = []
+
+
+class SchemaGame(_Loose):
+    availableGameStats: SchemaStats | None = None
+
+
+class SchemaResponse(_Loose):
+    game: SchemaGame | None = None
+
+
 class PlayerSummariesBody(_Loose):
     players: list[PlayerSummary]
 
@@ -100,6 +121,48 @@ class SteamWebApi:
             "/IWishlistService/GetWishlist/v1/", {"steamid": steam_id}, WishlistResponse, with_key=False
         )
         return data.response.items or None
+
+    async def get_player_achievements(self, steam_id: str, appid: int) -> list[tuple[str, bool]] | None:
+        """(업적 이름, 달성 여부) 목록. 업적이 없는 게임이면 None, 업적이 비공개면 AchievementsPrivate.
+
+        Steam은 비공개를 HTTP 403(+ "Profile is not public")으로 알려 공용 _get의 "API 키 거부" 처리와 겹친다 →
+        상태 코드와 본문을 직접 본다(PRD v6.16).
+        """
+        path = "/ISteamUserStats/GetPlayerAchievements/v1/"
+        try:
+            res = await self._http.get(f"{BASE_URL}{path}", params={"key": self._api_key, "steamid": steam_id, "appid": appid})
+        except httpx.TimeoutException as exc:
+            raise AppError(ErrorCode.STEAM_TIMEOUT, "Steam 응답이 지연되고 있습니다.", 504) from exc
+        except httpx.HTTPError as exc:
+            logger.warning("steam request failed: %s %s", path, type(exc).__name__)
+            raise _unavailable() from exc
+        try:
+            stats = res.json().get("playerstats") or {}
+        except ValueError:
+            stats = {}
+        error = str(stats.get("error") or "").lower()
+        if res.status_code == 403 and "not public" in error:
+            raise AchievementsPrivate()
+        if res.status_code == 400 and "no stats" in error:
+            return None
+        if res.status_code == 429:
+            raise AppError(
+                ErrorCode.STEAM_RATE_LIMITED, "Steam 요청 한도에 도달했습니다. 잠시 후 다시 시도해 주세요.", 503
+            )
+        if res.status_code != 200:
+            logger.warning("steam unexpected status: %s HTTP %s", path, res.status_code)
+            raise _unavailable()
+        items = stats.get("achievements")
+        if not isinstance(items, list):
+            return None
+        return [(str(a.get("apiname", "")), bool(a.get("achieved"))) for a in items if isinstance(a, dict)]
+
+    async def get_achievement_names(self, appid: int, language: str = "koreana") -> dict[str, str]:
+        """업적 이름(apiname) → 표시 이름(가능하면 한국어). 없으면 빈 사전."""
+        data = await self._get("/ISteamUserStats/GetSchemaForGame/v2/", {"appid": appid, "l": language}, SchemaResponse)
+        game = data.game
+        achievements = game.availableGameStats.achievements if game and game.availableGameStats else []
+        return {a.name: a.displayName for a in achievements if a.name and a.displayName}
 
     async def _get(self, path: str, params: dict[str, Any], model: type[T], with_key: bool = True) -> T:
         try:
