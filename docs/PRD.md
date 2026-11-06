@@ -35,6 +35,8 @@
 > **v6.15 (2026-11-06, 사용자 승인)**: ① AI 질문 미리 준비 — 질문 칸을 누르거나 질문 버튼에 마우스를 올리면 `POST /steam/news/{appid}/ask/warmup`으로 공지 수집과(필요하면) 검색 색인을 백그라운드로 준비(첫 질문 대기 단축, 페이지만 열어서는 시작하지 않음, 중복 준비 없음, 기능 OFF면 403). ② 내 게임 소식 — `GET /me/news-feed`: 최근 플레이한 보유 게임 10개의 최신 공지를 게임당 3개씩 모아 날짜순 20개, 패치 꼴 제목은 규모 표시. `/news` 맨 위에 둔다.
 >
 > **v6.16 (2026-11-06, 사용자 승인)**: "거의 다 깬 게임" — `GET /me/achievements`: 한 번이라도 실행한 보유 게임 전부(안전 상한 500개)의 Steam 업적 달성률로(사용자 요청으로 '플레이 상위 30개'에서 변경), 60% 이상 100% 미만을 달성률 순 5개(남은 업적 이름 최대 3개, 한국어) + 완료한 게임 수 + 업적 비공개 안내. 업적 없는 게임·오류는 건너뜀, 저장하지 않고 메모리 6시간. `/me`에 "마무리해 볼 게임" 칸.
+>
+> **v6.17 (2026-11-06, 사용자 승인)**: 마무리해 볼 게임의 남은 업적에 아이콘 — 업적 이름을 받던 GetSchemaForGame 응답의 미달성(회색) 아이콘 주소를 함께 내보낸다(추가 Steam 호출 없음, 이미지는 브라우저가 Steam CDN에서 직접). 숨겨진 업적(hidden)은 Steam처럼 이름을 감추고 "숨겨진 업적"으로 표시한다(서버가 이름·아이콘을 보내지 않음). 응답 `remaining[]` → `remaining[{name?, icon?, hidden}]`.
 
 ---
 
@@ -244,7 +246,7 @@ Browser ─ Next.js (App Router, client: TanStack Query + Zustand)
 | POST | `/auth/logout` | — | 쿠키 삭제 |
 | GET | `/me/profile` | 필수 | `{steamId, personaName?, avatarUrl?, profileUrl?}`(공개 프로필 요약, 메모리 10분, 사진·프로필 주소는 Steam 도메인 https만) |
 | GET | `/me/news-feed` | 필수 | `{items[{appid, gameName, headerImage?, gid, title, publishedAt, url, externalUrl?, scale?(MAJOR·PATCH·HOTFIX)}], gameCount, failedCount, fetchedAt}`(최근 플레이 게임 10개 × 공지 3개, 날짜순 20개, 뉴스 발췌 캐시 공유, 일부 게임 실패 허용, v6.15) |
-| GET | `/me/achievements` | 필수 | `{status(OK·PRIVATE), nearlyDone[{appid, name, headerImage?, achieved, total, remaining[]}], completedCount, checkedCount}`(실행한 보유 게임 전부·상한 500, 60~99%, 메모리 6시간, v6.16) |
+| GET | `/me/achievements` | 필수 | `{status(OK·PRIVATE), nearlyDone[{appid, name, headerImage?, achieved, total, remaining[{name?, icon?, hidden}]}], completedCount, checkedCount}`(실행한 보유 게임 전부·상한 500, 60~99%, 메모리 6시간, v6.16·v6.17 아이콘) |
 | GET | `/me/library` | 필수 | 본인 공개 게임·플레이시간·장르 분포·`metadataCoverage` |
 | GET | `/me/recommendations?exclude=` | 필수 | 보유 게임 TOP3 + reasons + 모드·스냅샷 |
 | GET | `/me/store-recommendations?onSaleOnly=` | 필수 | 미보유 게임 TOP10 + reasons·가격·`wishlisted`, `candidatePoolSize`, `candidateCount`, `metadataPending`, `pricePending`, 모드, `poolSnapshotAt`, `priceSnapshotAt`. 수집 전 `DATA_NOT_READY` |
