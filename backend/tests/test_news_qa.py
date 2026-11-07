@@ -270,12 +270,55 @@ async def test_value_when_question_answers_version_from_title(ai_client, steam_h
     assert body["answer"] == "1.1 (46 → 48)" and [s["gid"] for s in body["sources"]] == ["2002"]
 
 
+LINK = '[url="https://pubg.com/news/11306"]Read the full announcement here![/url]'
+
+
 async def test_no_usable_news_skips_llm(ai_client, steam_handler, fake_llm):
-    link_only = item("3001", NEW, "Read more", '[url="https://example.com/post"]Read the full announcement here![/url]')
-    steam_handler["fn"] = news_handler([link_only])
+    steam_handler["fn"] = news_handler([item("3001", NEW, "Read more", "[p][/p]")])  # 정리하면 본문이 빈 글
     body = (await ai_client.post("/steam/news/ask", json=ask())).json()
     assert body["refused"] is True and body["docCount"] == 0 and body["dateRange"] is None
     assert fake_llm.chats == []
+
+
+async def test_link_only_notice_is_title_only_evidence(ai_client, steam_handler, fake_llm):
+    """PRD v6.18: 본문이 외부 링크뿐인 공지는 빼지 않고 제목만 있는 글로 넣는다(점검 날짜가 제목에만 있는 경우).
+    그 글을 근거로 쓰면 출처에 외부 원문 주소가 붙는다."""
+    steam_handler["fn"] = news_handler([item("3002", NEW, "11/10(Tue) Maintenance Notice", LINK), two_notes()[1]])
+    fake_llm.reply = {"items": [{"name": "정기 점검", "kind": "MAINTENANCE", "start": "2099-11-10", "end": ""}],
+                      "sources": ["N002"]}
+
+    body = (await ai_client.post("/steam/news/ask", json=ask("다음 점검 언제야?"))).json()
+
+    assert body["intent"] == "SCHEDULE" and body["refused"] is False and body["docCount"] == 2
+    user = fake_llm.chats[0][1]
+    assert f"[N002] 11/10(Tue) Maintenance Notice ({NEW_DAY})" in user
+    assert "전문은 외부 사이트 pubg.com에 있다" in user and "Read the full announcement" not in user
+    assert body["sources"] == [{"gid": "3002", "title": "11/10(Tue) Maintenance Notice", "publishedAt": body["sources"][0]["publishedAt"],
+                                "url": body["sources"][0]["url"], "externalUrl": "https://pubg.com/news/11306"}]
+
+
+async def test_title_only_latest_patch_is_not_summarized(ai_client, steam_handler, fake_llm):
+    """최신 패치 공지가 제목만 있으면 모델을 부르지 않고 원문으로 안내한다(제목으로 요약을 지어내지 않게)."""
+    steam_handler["fn"] = news_handler([item("3003", NEW, "Patch Notes - Update 44.1", LINK), two_notes()[1]])
+
+    body = (await ai_client.post("/steam/news/ask", json=ask("최신 업데이트에서 바뀐 점은?"))).json()
+
+    assert fake_llm.chats == []
+    assert body["intent"] == "UPDATE_SUMMARY" and body["refused"] is False and body["summary"] is None
+    assert body["answer"] == "최신 업데이트 공지 'Patch Notes - Update 44.1'는 본문이 pubg.com에 있어 요약할 수 없어요. 원문에서 확인해 주세요."
+    assert body["latestUpdate"]["gid"] == "3003" and body["sources"][0]["externalUrl"] == "https://pubg.com/news/11306"
+
+
+async def test_title_only_news_post_is_not_latest_update(ai_client, steam_handler, fake_llm):
+    """제목만 있는 공지는 엄격한 패치 제목일 때만 최신 업데이트 후보 — 개발자 편지는 본문 있는 패치 공지에 양보한다."""
+    steam_handler["fn"] = news_handler([item("3004", NEW, "[Dev Letter] Anti-Cheat Update", LINK), two_notes()[1]])
+    fake_llm.reply = {"version": "1.0", "date": OLD_DAY, "new_features": ["로드아웃"], "balance": [], "bug_fixes": [],
+                      "sources": ["N001"]}
+
+    body = (await ai_client.post("/steam/news/ask", json=ask("최신 업데이트에서 바뀐 점은?"))).json()
+
+    assert body["latestUpdate"]["gid"] == "2001" and body["summary"]["version"] == "1.0"
+    assert len(fake_llm.chats) == 1
 
 
 async def test_large_corpus_uses_rag_top_k(ai_client, steam_handler, fake_llm):

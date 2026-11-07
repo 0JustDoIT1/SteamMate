@@ -139,6 +139,8 @@ function Answer({ data }: { data: AskResponse }) {
   // 모델이 다른 공지를 요약했을 때만 "무엇을 최신으로 봤는지" 알려 준다
   const latest = data.latestUpdate;
   const showLatest = latest !== null && latest !== undefined && !data.sources.some((s) => s.gid === latest.gid);
+  // 본문이 외부 사이트에만 있는 공지를 근거로 썼다(PRD v6.18). 최신 패치 안내 답은 문장이 이미 그렇게 말한다
+  const titleOnly = data.sources.some((s) => s.externalUrl) && data.intent !== "UPDATE_SUMMARY";
   return (
     <div className="space-y-3 border-t border-zinc-800 px-5 py-4">
       {data.refused ? (
@@ -161,19 +163,23 @@ function Answer({ data }: { data: AskResponse }) {
           <ul className="mt-1 space-y-1 text-sm">
             {data.sources.map((s) => (
               <li key={s.gid}>
-                <a href={s.url} target="_blank" rel="noopener noreferrer" className="hover:underline">
+                <a href={s.externalUrl ?? s.url} target="_blank" rel="noopener noreferrer" className="hover:underline">
                   {s.title} ↗
                 </a>
+                {s.externalUrl ? <span className="chip ml-2">{hostOf(s.externalUrl)}</span> : null}
                 <span className="ml-2 text-xs text-zinc-500">{formatDateTime(s.publishedAt)}</span>
               </li>
             ))}
           </ul>
+          {titleOnly ? (
+            <p className="mt-1.5 text-xs text-zinc-500">본문이 외부 사이트에 있는 공지는 제목(날짜·종류)만 보고 답했어요. 자세한 내용은 원문에서 확인해 주세요.</p>
+          ) : null}
         </div>
       ) : null}
       {showLatest ? (
         <p className="text-xs text-zinc-500">
           최신 업데이트 기준:{" "}
-          <a href={latest.url} target="_blank" rel="noopener noreferrer" className="hover:underline">
+          <a href={latest.externalUrl ?? latest.url} target="_blank" rel="noopener noreferrer" className="hover:underline">
             {latest.title}
           </a>{" "}
           ({formatDateTime(latest.publishedAt)})
@@ -181,6 +187,14 @@ function Answer({ data }: { data: AskResponse }) {
       ) : null}
     </div>
   );
+}
+
+function hostOf(url: string): string {
+  try {
+    return new URL(url).host;
+  } catch {
+    return "외부 사이트";
+  }
 }
 
 function SummaryView({ summary }: { summary: NonNullable<AskResponse["summary"]> }) {

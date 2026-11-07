@@ -380,6 +380,8 @@ export interface components {
             publishedAt: string;
             /** Url */
             url: string;
+            /** Externalurl */
+            externalUrl: string | null;
         };
         /**
          * BuildChannel

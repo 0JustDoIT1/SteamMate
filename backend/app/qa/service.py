@@ -20,6 +20,7 @@ from dataclasses import dataclass, replace
 from datetime import UTC, date, datetime
 from enum import StrEnum
 from typing import Annotated
+from urllib.parse import urlparse
 
 from cachetools import TTLCache
 from pydantic import ConfigDict, Field, StringConstraints
@@ -30,6 +31,7 @@ from app.qa.llm import ChatResult, LlmClient
 from app.qa.prompt import (
     DOC_SEPARATOR,
     doc_header,
+    is_patch_title,
     is_test_build,
     latest_update_id,
     mark_latest,
@@ -76,6 +78,11 @@ REFUSAL_ANSWERS = {
 }
 
 
+def title_only_summary(news: FullNews) -> str:
+    host = urlparse(news.external_url or "").netloc or "외부 사이트"
+    return f"최신 업데이트 공지 '{news.title}'는 본문이 {host}에 있어 요약할 수 없어요. 원문에서 확인해 주세요."
+
+
 class WarmupStatus(StrEnum):
     STARTED = "STARTED"  # 지금 준비를 시작했거나 이미 준비 중
     READY = "READY"  # 이미 준비돼 있음(공지·필요하면 색인까지)
@@ -108,6 +115,8 @@ class AskSource(CamelModel):
     title: str
     published_at: datetime
     url: str
+    # 본문이 외부 사이트에 있는 공지(제목만 보고 답함, PRD v6.18)면 그 원문 주소
+    external_url: str | None = None
 
 
 class UpdateScale(StrEnum):
@@ -243,7 +252,7 @@ class _Doc:
 
     def source(self) -> AskSource:
         n = self.news
-        return AskSource(gid=n.gid, title=n.title, published_at=n.published_at, url=n.url)
+        return AskSource(gid=n.gid, title=n.title, published_at=n.published_at, url=n.url, external_url=n.external_url)
 
 
 @dataclass
@@ -317,6 +326,13 @@ class NewsQaService:
                                date_range=None, latest_update=None, doc_count=0, input_tokens=0, **empty)
 
         summary = intent is QaIntent.UPDATE_SUMMARY
+        latest = next((d for d in corpus.docs if d.id == corpus.latest_id), None)
+        if summary and latest is not None and latest.news.title_only:
+            # 최신 패치 공지의 본문이 외부 사이트에만 있다 — 제목만으로 요약을 지어내지 않고 원문으로 안내한다(PRD v6.18)
+            dates = [d.news.published_at.date() for d in corpus.docs]
+            return AskResponse(answer=title_only_summary(latest.news), refused=False, mode=QaMode.FULL_CONTEXT,
+                               sources=[latest.source()], date_range=DateRange(from_=min(dates), to=max(dates)),
+                               latest_update=latest.source(), doc_count=len(corpus.docs), input_tokens=0, **empty)
         today = today_kst()  # 지시문의 오늘과 상태 판정 기준을 같은 날로
         system, schema = system_prompt(intent, today), json_schema(intent)
         text = corpus.text(mark_latest_doc=summary)
@@ -441,7 +457,11 @@ class NewsQaService:
         news.sort(key=lambda n: n.published_at)
         docs = [_Doc(f"N{i + 1:03d}", replace(n, text=strip_rules(n.text))) for i, n in enumerate(news)]
         titles = [(d.id, d.news.title) for d in docs]
-        corpus = _Corpus(docs, latest_update_id(titles), recent_ids(titles, self._policy.recent_docs))
+        # 제목만 있는 공지는 엄격한 패치 제목일 때만 "최신 업데이트" 후보(PRD v6.18) — "[Dev Letter] … Update"나
+        # "Update Roadmap" 같은 소식 글이 뽑히지 않게. 제목만 있는 공지가 없으면 이전과 같은 결과(실험 조건 유지)
+        update_titles = [(i, t) for (i, t), d in zip(titles, docs, strict=True)
+                         if not d.news.title_only or is_patch_title(t)]
+        corpus = _Corpus(docs, latest_update_id(update_titles), recent_ids(titles, self._policy.recent_docs))
         self._cache[appid] = corpus
         return corpus
 

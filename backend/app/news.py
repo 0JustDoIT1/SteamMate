@@ -11,6 +11,7 @@ import logging
 import re
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from urllib.parse import urlparse
 
 import httpx
 from cachetools import TTLCache
@@ -66,7 +67,18 @@ class FullNews:
     title: str
     published_at: datetime
     url: str
-    text: str  # clean_news 결과 전문
+    text: str  # clean_news 결과 전문. 제목만 있는 공지는 외부 원문 안내 한 줄
+    # 본문이 외부 링크뿐인 공지(PRD v6.18)면 그 원문 주소 — 근거는 제목(날짜·종류)뿐이다
+    external_url: str | None = None
+
+    @property
+    def title_only(self) -> bool:
+        return self.external_url is not None
+
+
+def external_note(url: str) -> str:
+    """제목만 있는 공지의 본문 자리에 넣는 안내(모델이 제목 밖의 내용을 지어내지 않게)."""
+    return f"(본문 없음: 전문은 외부 사이트 {urlparse(url).netloc}에 있다. 이 글의 근거는 제목뿐이다.)"
 
 
 class NewsResponse(CamelModel):
@@ -120,13 +132,16 @@ class NewsService:
     async def fetch_full(self, appid: int, count: int, before: int | None) -> list[FullNews]:
         """AI 질문용 공식 공지 전문(정리 후). 캐시하지 않는다 — 보관 여부는 호출자가 TTL로 정한다.
 
-        외부 링크뿐인 공지와 정리 후 본문이 빈 글은 근거로 쓸 수 없어 뺀다.
+        본문이 외부 링크뿐인 공지는 제목만 있는 글로 넣는다(PRD v6.18) — PUBG·블루 아카이브처럼 패치 노트·점검 공지가
+        전부 자사 사이트에 있는 게임은 이 글을 빼면 일정·최신 패치를 전혀 알 수 없었다. 제목에 날짜·종류가 든다.
+        외부 페이지는 가져오지 않는다(이용 허가 없음). 정리 후 본문이 빈 글은 뺀다.
         """
         out = []
         for r in await self._request(appid, count, before):
-            if not re.fullmatch(r"\d{1,20}", r.gid) or link_only_target(r.contents):
+            if not re.fullmatch(r"\d{1,20}", r.gid):
                 continue
-            text = clean_news(r.contents)
+            external = link_only_target(r.contents)
+            text = external_note(external) if external else clean_news(r.contents)
             if text:
                 out.append(FullNews(
                     gid=r.gid,
@@ -134,6 +149,7 @@ class NewsService:
                     published_at=datetime.fromtimestamp(r.date, UTC),
                     url=STORE_NEWS_URL.format(appid=appid, gid=r.gid),
                     text=text,
+                    external_url=external,
                 ))
         return out
 
