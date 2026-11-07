@@ -196,8 +196,9 @@ async def test_schedule_and_content_answers_carry_server_status(ai_client, steam
     body = (await ai_client.post("/steam/news/ask", json=ask("다음 업데이트는 언제 나와?"))).json()
     assert body["intent"] == "SCHEDULE" and body["latestUpdate"] is None
     assert body["schedule"] == {"noCurrent": False, "items": [
-        {"name": "1.2 출시", "kind": "RELEASE", "start": "2026-11-20", "end": "", "status": "UPCOMING"},
-        {"name": "수확 축제", "kind": "EVENT", "start": "2026-10-01", "end": "2026-10-31", "status": "ENDED"}]}
+        {"name": "1.2 출시", "kind": "RELEASE", "start": "2026-11-20", "end": "", "status": "UPCOMING", "fromPostDate": False},
+        {"name": "수확 축제", "kind": "EVENT", "start": "2026-10-01", "end": "2026-10-31", "status": "ENDED",
+         "fromPostDate": False}]}
     # 일정·콘텐츠 지시문에는 상태 판정과 같은 오늘(한국 날짜)이 들어간다
     assert "오늘은 2026-11-05이다" in fake_llm.chats[-1][0]
 
@@ -830,3 +831,53 @@ def test_latest_update_skips_report_posts():
     assert latest_update_id(docs) == "N002"
     assert latest_update_id([("N001", "Map Service Report - Update 44.1")]) == "N001"  # 다른 글이 없으면 그 글이라도
 
+
+
+async def test_started_post_titles_become_schedule_items(ai_client, steam_handler, fake_llm, monkeypatch):
+    """본문에 날짜가 없는 "지금 시작" 꼴 공지(DST "Hallowed Nights Returns!")는 서버가 게시일(한국 날짜) 시작 일정으로 더한다.
+    모델이 이미 쓴 공지·앞으로의 일·점검 질문·묻지 않은 종류에는 더하지 않는다."""
+    from app.qa import service
+
+    monkeypatch.setattr(service, "today_kst", lambda: date(2026, 11, 7))
+    returns = item("6003", 1793026800, "Hallowed Nights Returns!", "[p]Trick or treat![/p]")  # 2026-10-26 15:00 UTC = 10/27 KST
+    out_now = item("6002", 1792940400, "Cursed Confrontation Part 2 - Out Now!", "[p]New boss.[/p]")  # 10/26 KST
+    coming = item("6001", 1792854000, "Klei Fest Coming June 11th!", "[p]Soon.[/p]")
+    steam_handler["fn"] = news_handler([returns, out_now, coming])
+    fake_llm.reply = {"items": [], "sources": []}
+
+    body = (await ai_client.post("/steam/news/ask", json=ask("지금 진행 중인 이벤트 있어?"))).json()
+    assert body["refused"] is False
+    assert body["schedule"]["items"] == [{"name": "Hallowed Nights Returns!", "kind": "EVENT", "start": "2026-10-27",
+                                          "end": "", "status": "UNKNOWN", "fromPostDate": True}]
+    assert [s["gid"] for s in body["sources"]] == ["6003"]
+
+    both = (await ai_client.post("/steam/news/ask", json=ask("최근 일정 알려줘"))).json()  # 종류를 안 물으면 출시도
+    assert [(i["name"], i["status"]) for i in both["schedule"]["items"]] == [
+        ("Hallowed Nights Returns!", "UNKNOWN"), ("Cursed Confrontation Part 2 - Out Now!", "ENDED")]
+
+    maintenance = (await ai_client.post("/steam/news/ask", json=ask("다음 점검 언제야?"))).json()
+    assert maintenance["refused"] is True  # 점검만 물으면 이벤트를 더하지 않는다
+
+    specific = (await ai_client.post("/steam/news/ask", json=ask("Winter's Feast 기간은?"))).json()
+    assert specific["refused"] is True  # 특정 일정을 물으면(지금·다음·최근 없음) 상관없는 공지를 더하지 않는다
+
+    fake_llm.reply = {"items": [{"name": "Hallowed Nights", "kind": "EVENT", "start": "2026-10-27", "end": "2026-11-10"}],
+                      "sources": ["N003"]}
+    cited = (await ai_client.post("/steam/news/ask", json=ask("지금 진행 중인 이벤트 있어?"))).json()
+    assert [i["fromPostDate"] for i in cited["schedule"]["items"]] == [False]  # 모델이 쓴 공지는 다시 더하지 않는다
+
+
+def test_started_kind_title_rules():
+    from app.qa.prompt import started_kind
+
+    assert started_kind("Don't Starve Together - Hallowed Nights Returns!") == "EVENT"
+    assert started_kind("Winter's Feast Has Arrived! + More") == "EVENT"
+    assert started_kind("Season 27 is now live") == "EVENT"
+    assert started_kind("Cursed Confrontation Part 2 - Out Now!") == "RELEASE"
+    assert started_kind("Update 44.1 is now live") == "RELEASE"  # 업데이트·버전 제목은 이벤트가 아니다
+    assert started_kind("V3.4.0 Stable is live") == "RELEASE"
+    assert started_kind("Cursed Confrontation Part 2 Releases October 22nd!") is None  # 앞으로의 출시
+    assert started_kind("Klei Fest Coming June 11th!") is None
+    assert started_kind("Ranked Returns Next Week") is None
+    assert started_kind("11/10(Tue) Maintenance Notice") is None
+    assert started_kind("Store Sale Is Live") is None  # 상점 글

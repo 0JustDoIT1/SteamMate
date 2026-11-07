@@ -249,6 +249,8 @@ class ScheduleItem(_Loose):
     start: str = ""
     end: str = ""
     status: Status = Status.UNKNOWN  # 서버가 채운다
+    # 서버가 "지금 시작" 꼴 공지 제목으로 더한 일정(시작일 = 공지 게시일, 본문에 날짜 없음). 모델 칸이 아니다
+    from_post_date: bool = False
 
     @field_validator("kind", mode="before")
     @classmethod
@@ -361,7 +363,7 @@ def _clean_fields(data: dict, titles: dict[str, str]) -> dict:
     for key, val in data.items():
         if key == "sources":
             out[key] = list(dict.fromkeys(i for s in val for i in doc_ids(s)))
-        elif key in _ENUM_KEYS:
+        elif key in _ENUM_KEYS or isinstance(val, bool):  # 서버가 정하는 칸(from_post_date 등)은 글자 정리 대상이 아니다
             out[key] = val
         elif key == "doc":  # 문서 ID 칸은 제목으로 바꾸지 않는다
             ids = doc_ids(val)
@@ -373,6 +375,11 @@ def _clean_fields(data: dict, titles: dict[str, str]) -> dict:
         else:
             out[key] = _clean(val, titles)
     return out
+
+
+def finalize_schedule(items: list[ScheduleItem]) -> list[ScheduleItem]:
+    """진행 중·예정을 먼저(안정 정렬: 같은 상태끼리는 들어온 순서), 최대 MAX_SCHEDULE_ITEMS건."""
+    return sorted(items, key=lambda i: _STATUS_ORDER[i.status])[:MAX_SCHEDULE_ITEMS]
 
 
 def parse(intent: QaIntent, content: str, titles: dict[str, str] | None = None,
@@ -388,10 +395,10 @@ def parse(intent: QaIntent, content: str, titles: dict[str, str] | None = None,
     filled = _MODELS[intent].model_validate(_clean_fields(filled.model_dump(), titles))
     today = today or today_kst()
     if isinstance(filled, ScheduleAnswer):
-        items = [i.model_copy(update={"status": status_of(i.start, i.end, today, i.kind in SINGLE_DAY_KINDS)})
+        items = [i.model_copy(update={"status": status_of(i.start, i.end, today, i.kind in SINGLE_DAY_KINDS),
+                                      "from_post_date": False})
                  for i in filled.items if not _is_refusal(i.name) and (i.start or i.end)]
-        items.sort(key=lambda i: _STATUS_ORDER[i.status])  # 안정 정렬: 같은 상태끼리는 모델 순서
-        filled = filled.model_copy(update={"items": items[:MAX_SCHEDULE_ITEMS]})
+        filled = filled.model_copy(update={"items": finalize_schedule(items)})
     elif isinstance(filled, ContentAnswer):
         filled = filled.model_copy(update={"status": status_of(filled.release_date, "", today, single_day=True)})
     return filled

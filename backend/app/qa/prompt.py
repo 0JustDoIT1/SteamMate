@@ -51,6 +51,35 @@ def is_patch_title(title: str) -> bool:
 _STORE_QUESTION = re.compile(r"상점|스토어|굿즈|드롭|\b(store|shop|drops?)\b", re.IGNORECASE)
 
 
+# "지금 시작됨" 꼴 제목(본문에 날짜가 없어도 게시일에 시작한 일정): DST "Hallowed Nights Returns!" 등
+_STARTED_TITLE = re.compile(
+    r"\b(returns|is back|has arrived|is (now )?live|now live|has begun|is here|out now|available now|now available)\b",
+    re.IGNORECASE,
+)
+# 출시로 볼 말(하루짜리 RELEASE). 나머지는 기간이 있는 EVENT
+_RELEASED_TITLE = re.compile(r"\b(out now|available now|now available)\b", re.IGNORECASE)
+# 앞으로의 일: "Coming", "Releases October 22nd", "11/10" 같은 날짜가 든 제목은 게시일이 시작일이 아니다
+_FUTURE_TITLE = re.compile(
+    r"\b(coming|soon|upcoming|next|tomorrow|releases?|starts?|begins?)\b|"
+    r"\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+\d|\d+(st|nd|rd|th)\b|\d{1,2}/\d{1,2}|예정",
+    re.IGNORECASE,
+)
+
+
+def started_kind(title: str) -> str | None:
+    """제목이 "이미 시작됨"을 말하면 일정 종류(RELEASE·EVENT), 아니면 None. 상점·핫픽스 글과 앞으로의 일은 None.
+    AI 지시문 대신 서버가 정한다 — 9B 모델은 "이미 시작된 글만 게시일을 쓴다"는 조건을 지키지 못해 없는 점검
+    날짜를 지어냈다(2026-11-07 시도 후 되돌림)."""
+    if not _STARTED_TITLE.search(title) or _FUTURE_TITLE.search(title):
+        return None
+    if _NOT_UPDATE_TITLE.search(title) or _HOTFIX_TITLE.search(title):
+        return None
+    # "Update 44.1 is now live"처럼 업데이트·패치·버전이 든 제목은 출시 — 이벤트 질문에 섞이지 않게
+    if _RELEASED_TITLE.search(title) or _PATCH_TITLE.search(title) or _VERSION.search(title):
+        return "RELEASE"
+    return "EVENT"
+
+
 def is_store_title(title: str) -> bool:
     """상점 개편·드롭·굿즈 글("November Store Update 2026")인가."""
     return _NOT_UPDATE_TITLE.search(title) is not None

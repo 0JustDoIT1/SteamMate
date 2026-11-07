@@ -865,6 +865,11 @@ export interface components {
             /** End */
             end: string;
             status: components["schemas"]["Status"];
+            /**
+             * Frompostdate
+             * @default false
+             */
+            fromPostDate: boolean;
         };
         /**
          * ScheduleKind

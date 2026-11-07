@@ -350,6 +350,8 @@ function ScheduleView({ schedule }: { schedule: NonNullable<AskResponse["schedul
           </p>
           <p className="text-zinc-600 dark:text-zinc-400">
             {period(item.start, item.end, item.kind === "RELEASE" || item.kind === "MAINTENANCE")}
+            {/* 본문에 날짜가 없어 공지가 올라온 날을 시작일로 본 일정(서버 판정) */}
+            {item.fromPostDate ? <span className="ml-2 text-xs text-zinc-500">· 공지 게시일 기준, 종료일 미정</span> : null}
           </p>
         </li>
       ))}

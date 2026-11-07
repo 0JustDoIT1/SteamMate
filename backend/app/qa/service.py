@@ -16,6 +16,7 @@
 
 import asyncio
 import logging
+import re
 from dataclasses import dataclass, replace
 from datetime import UTC, date, datetime
 from enum import StrEnum
@@ -38,6 +39,7 @@ from app.qa.prompt import (
     latest_update_id,
     mark_latest,
     recent_ids,
+    started_kind,
     strip_rules,
     title_version,
     update_scale,
@@ -45,18 +47,23 @@ from app.qa.prompt import (
 )
 from app.qa.retrieval import Chunk, VectorIndex, chunk_doc, context_chunks, target_names
 from app.qa.templates import (
+    KST,
     RECENCY_INTENTS,
+    SINGLE_DAY_KINDS,
     ContentAnswer,
     QaIntent,
     ScheduleAnswer,
+    ScheduleItem,
     Status,
     UpdateSummary,
     ValueAnswer,
     asks_current,
     classify,
+    finalize_schedule,
     json_schema,
     parse,
     render,
+    status_of,
     system_prompt,
     today_kst,
 )
@@ -185,6 +192,8 @@ class ScheduleItemDetail(CamelModel):
     end: str
     # 오늘(한국 날짜)과 비교해 서버가 정한 상태
     status: Status
+    # 본문에 날짜가 없어 서버가 "지금 시작" 꼴 공지 제목과 게시일로 더한 일정(시작일 = 게시일)
+    from_post_date: bool = False
 
 
 class ScheduleDetail(CamelModel):
@@ -379,6 +388,9 @@ class NewsQaService:
         valid = [c for c in filled.sources if c in context_ids]
         if len(valid) != len(filled.sources):
             logger.info("dropped cited ids not given to the model: %s", len(filled.sources) - len(valid))
+        if isinstance(filled, ScheduleAnswer):
+            filled, added = _with_started_posts(filled, corpus, req.question, today)
+            valid += added
         # 규모·빌드(와 모델이 비운 버전)는 모델이 요약에 쓴 공지(첫 인용), 없으면 최신 업데이트 공지 제목으로 정한다
         summary_doc = by_id.get(valid[0] if valid else corpus.latest_id or "")
         summary_title = summary_doc.news.title if summary_doc else ""
@@ -478,6 +490,49 @@ def _without_store(filled: ScheduleAnswer, by_id: dict[str, _Doc]) -> ScheduleAn
     return filled.model_copy(update={"items": items, "sources": sources})
 
 
+def _with_started_posts(filled: ScheduleAnswer, corpus: _Corpus, question: str,
+                        today: date) -> tuple[ScheduleAnswer, list[str]]:
+    """최근 공지 중 제목이 "지금 시작" 꼴인데 모델이 쓰지 않은 글을 게시일(한국 날짜) 시작 일정으로 더한다.
+    본문에 날짜가 없는 이벤트 공지(DST "Hallowed Nights Returns!")는 "문서에 날짜가 있는 일정만" 지시 때문에 모델이
+    뺀다. 지금·다음·최근처럼 현재 상황을 묻는 질문에만 더한다("Winter's Feast 언제야?"처럼 특정 일정을 물으면 그 답에
+    상관없는 공지가 끼지 않게). 점검만 물으면 더하지 않고, 이벤트·출시 중 하나만 물으면 그 종류만. 종료일은 모른다."""
+    if not asks_current(question):
+        return filled, []
+    kinds = _asked_kinds(question)
+    cited = set(filled.sources)
+    by_id = {d.id: d for d in corpus.docs}
+    added: list[str] = []
+    items = list(filled.items)
+    for doc_id in corpus.recent_ids:
+        doc = by_id[doc_id]
+        kind = started_kind(doc.news.title)
+        if kind is None or kind not in kinds or doc_id in cited:
+            continue
+        start = doc.news.published_at.astimezone(KST).date().isoformat()
+        items.append(ScheduleItem(name=doc.news.title, kind=kind, start=start, from_post_date=True,
+                                  status=status_of(start, "", today, kind in SINGLE_DAY_KINDS)))
+        added.append(doc_id)
+    if not added:
+        return filled, []
+    kept = finalize_schedule(items)
+    added = [i for i in added if any(it.from_post_date and it.name == by_id[i].news.title for it in kept)]
+    return filled.model_copy(update={"items": kept, "sources": [*filled.sources, *added]}), added
+
+
+_MAINTENANCE_Q = re.compile(r"점검|maintenance", re.IGNORECASE)
+_EVENT_Q = re.compile(r"이벤트|시즌|축제|event|season", re.IGNORECASE)
+_RELEASE_Q = re.compile(r"출시|DLC|업데이트|패치|확장|release|update", re.IGNORECASE)
+
+
+def _asked_kinds(question: str) -> set[str]:
+    if _MAINTENANCE_Q.search(question):
+        return set()
+    event, release = bool(_EVENT_Q.search(question)), bool(_RELEASE_Q.search(question))
+    if event != release:
+        return {"EVENT"} if event else {"RELEASE"}
+    return {"EVENT", "RELEASE"}
+
+
 def _mark_chunk(chunk: Chunk, corpus: _Corpus) -> str:
     """색인은 표시 없이 만들고, 업데이트 요약 입력에서만 최신 공지 청크 머리줄에 표시를 붙인다."""
     if chunk.doc_id != corpus.latest_id:
@@ -501,7 +556,8 @@ def _details(filled, summary_title: str) -> dict:
                      for h in filled.history])}
     if isinstance(filled, ScheduleAnswer):
         return {"schedule": ScheduleDetail(items=[
-            ScheduleItemDetail(name=i.name, kind=ScheduleKind(i.kind), start=i.start, end=i.end, status=i.status)
+            ScheduleItemDetail(name=i.name, kind=ScheduleKind(i.kind), start=i.start, end=i.end, status=i.status,
+                               from_post_date=i.from_post_date)
             for i in filled.items])}
     if isinstance(filled, ContentAnswer):
         return {"content": ContentDetail(name=filled.name, form=ContentForm(filled.form),
