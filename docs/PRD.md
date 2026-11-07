@@ -37,6 +37,8 @@
 > **v6.16 (2026-11-06, 사용자 승인)**: "거의 다 깬 게임" — `GET /me/achievements`: 한 번이라도 실행한 보유 게임 전부(안전 상한 500개)의 Steam 업적 달성률로(사용자 요청으로 '플레이 상위 30개'에서 변경), 60% 이상 100% 미만을 달성률 순 5개(남은 업적 이름 최대 3개, 한국어) + 완료한 게임 수 + 업적 비공개 안내. 업적 없는 게임·오류는 건너뜀, 저장하지 않고 메모리 6시간. `/me`에 "마무리해 볼 게임" 칸.
 >
 > **v6.17 (2026-11-06, 사용자 승인)**: 마무리해 볼 게임의 남은 업적에 아이콘 — 업적 이름을 받던 GetSchemaForGame 응답의 미달성(회색) 아이콘 주소를 함께 내보낸다(추가 Steam 호출 없음, 이미지는 브라우저가 Steam CDN에서 직접). 숨겨진 업적(hidden)은 Steam처럼 이름을 감추고 "숨겨진 업적"으로 표시한다(서버가 이름·아이콘을 보내지 않음). 응답 `remaining[]` → `remaining[{name?, icon?, hidden}]`.
+>
+> **v6.18 (2026-11-07, 사용자 승인)**: 본문이 외부 링크뿐인 공지(PUBG·블루 아카이브는 패치 노트·점검 공지 대부분)를 AI 질문 근거에서 빼지 않고 "제목만 있는 공지"로 넣는다(제목의 날짜·종류로 일정 질문에 답함). 이런 공지는 엄격한 패치 제목일 때만 "최신 업데이트" 후보(개발자 편지·로드맵 소식 제외). 최신 업데이트가 제목만 있는 공지면 모델을 부르지 않고 "본문이 외부 사이트에 있어 요약할 수 없음" + 원문 링크로 답한다(요약을 지어내지 않게). 출처에 외부 원문 주소 `externalUrl?`, 화면은 원문 사이트 표시와 "제목만 보고 답함" 안내. 외부 페이지는 가져오지 않는다(이용 허가 없음).
 
 ---
 
@@ -253,7 +255,7 @@ Browser ─ Next.js (App Router, client: TanStack Query + Zustand)
 | GET | `/me/deals` | 필수 | `wishlistDeals`, `wishlistStatus`(OK·EMPTY_OR_PRIVATE·UNAVAILABLE), `dlcDeals`, `dlcBaseGameCount`, `dlcCheckedCount`, `pricePending`, `priceSnapshotAt` |
 | GET | `/steam/dashboard?cc=kr` | 선택 | 섹션별 `{source, snapshotAt, entries[]}`, 장르 분포. 로그인 시 개인화 |
 | GET | `/steam/news/{appid}?count=1~20&before=` | — | 공식 공지 `{appid, name, headerImage, items[{gid, title, author, publishedAt, excerpt, url, externalUrl}], nextBefore, askEnabled}`. 없는 게임 `NOT_FOUND` |
-| POST | `/steam/news/ask` | — | `{appid, question(1~300자)}`(다른 항목은 거절) → `{answer(공용 문장), refused, intent(UPDATE_SUMMARY·VALUE·SCHEDULE·CONTENT·OTHER), summary{version, date, scale(MAJOR·PATCH·HOTFIX), build(STABLE·TEST), newFeatures[], balance[], bugFixes[]}?, value{target, kind(CURRENT·AT_VERSION·FIRST·WHEN·COUNT·DIFF·VERSIONS), value, changedIn, previous, history[{attribute, version, date, before, after}]}?, schedule{items[{name, kind(EVENT·RELEASE·MAINTENANCE·TEST·SALE), start, end, status(ONGOING·UPCOMING·ENDED·UNKNOWN)}], noCurrent}?, content{name, form(FREE_UPDATE·DLC·EXPANSION·OTHER), releaseDate, status, highlights[]}?, mode(FULL_CONTEXT·RAG), sources[{gid, title, publishedAt, url}], dateRange{from, to}(사용한 글의 날짜 범위), latestUpdate{gid, title, publishedAt, url}?(업데이트 요약일 때), docCount, inputTokens, model, answeredAt}`. 플래그 OFF `FEATURE_DISABLED`, LLM 장애 `AI_UNAVAILABLE` |
+| POST | `/steam/news/ask` | — | `{appid, question(1~300자)}`(다른 항목은 거절) → `{answer(공용 문장), refused, intent(UPDATE_SUMMARY·VALUE·SCHEDULE·CONTENT·OTHER), summary{version, date, scale(MAJOR·PATCH·HOTFIX), build(STABLE·TEST), newFeatures[], balance[], bugFixes[]}?, value{target, kind(CURRENT·AT_VERSION·FIRST·WHEN·COUNT·DIFF·VERSIONS), value, changedIn, previous, history[{attribute, version, date, before, after}]}?, schedule{items[{name, kind(EVENT·RELEASE·MAINTENANCE·TEST·SALE), start, end, status(ONGOING·UPCOMING·ENDED·UNKNOWN)}], noCurrent}?, content{name, form(FREE_UPDATE·DLC·EXPANSION·OTHER), releaseDate, status, highlights[]}?, mode(FULL_CONTEXT·RAG), sources[{gid, title, publishedAt, url, externalUrl?(v6.18)}], dateRange{from, to}(사용한 글의 날짜 범위), latestUpdate{gid, title, publishedAt, url}?(업데이트 요약일 때), docCount, inputTokens, model, answeredAt}`. 플래그 OFF `FEATURE_DISABLED`, LLM 장애 `AI_UNAVAILABLE` |
 | POST | `/steam/news/{appid}/ask/warmup` | — | `202 {status: STARTED·READY}` — 공지 수집·검색 색인을 백그라운드로 미리 준비(질문 칸 포커스 때, 중복 없음). 플래그 OFF `FEATURE_DISABLED` (v6.15) |
 
 추천 응답 예:
