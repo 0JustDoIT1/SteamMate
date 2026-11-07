@@ -24,6 +24,7 @@ _NOT_UPDATE_TITLE = re.compile(
 )
 # 정식이 아닌 테스트 빌드: 7DTD "V3.4.0 EXP", DbD "PTB", Factorio "Experimental", "Open Beta"
 _TEST_TITLE = re.compile(r"\b(exp|experimental|ptb|beta|public test)\b|베타|테스트 서버", re.IGNORECASE)
+_REPORT_TITLE = re.compile(r"\breport\b", re.IGNORECASE)
 _HOTFIX_TITLE = re.compile(r"hot\s*i?fix|bug\s*fix|핫픽스", re.IGNORECASE)
 _MAJOR_TITLE = re.compile(r"expansion|major update|대형 업데이트|확장팩", re.IGNORECASE)
 # 끝자리가 모두 0인 버전(2.0, 1.20.0, 3.4.0.0)은 대형 업데이트로 본다. 1.4.5.7·2.4.1은 패치
@@ -96,7 +97,9 @@ def latest_update_id(docs: list[tuple[str, str]]) -> str | None:
     if not docs:
         return None
     candidates = [(i, t) for i, t in reversed(docs) if not _NOT_UPDATE_TITLE.search(t)]
-    patches = [(i, t) for i, t in candidates if _PATCH_TITLE.search(t)]
+    # "Map Service Report - Update 44.1"(맵 순환 안내)은 같은 날 "Patch Notes - Update 44.1"보다 몇 분 늦게 올라와
+    # 최신 업데이트로 뽑혔다(PUBG, 2026-11-07) — 보고 글은 패치 공지 후보에서 뺀다
+    patches = [(i, t) for i, t in candidates if _PATCH_TITLE.search(t) and not _REPORT_TITLE.search(t)]
     for doc_id, title in patches:
         if not is_test_build(title):
             return doc_id

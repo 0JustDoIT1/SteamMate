@@ -819,3 +819,14 @@ def test_recent_ids_skip_store_and_hotfix_posts():
             ("N003", "Hotfix 760178"), ("N004", "Hotifix 760944"), ("N005", "November Store Update"),
             ("N006", "Hotfix 762113"), ("N007", "Patch 1.2 Notes")]
     assert recent_ids(docs, 3) == ["N007", "N002", "N001"]
+
+
+def test_latest_update_skips_report_posts():
+    """같은 날 "Patch Notes - Update 44.1" 뒤에 올라온 "Map Service Report - Update 44.1"(맵 순환 안내)은 최신 업데이트가 아니다."""
+    from app.qa.prompt import latest_update_id
+
+    docs = [("N001", "Patch Notes - Update 43.2"), ("N002", "Patch Notes - Update 44.1"),
+            ("N003", "Map Service Report - Update 44.1"), ("N004", "November Store Update 2026")]
+    assert latest_update_id(docs) == "N002"
+    assert latest_update_id([("N001", "Map Service Report - Update 44.1")]) == "N001"  # 다른 글이 없으면 그 글이라도
+
