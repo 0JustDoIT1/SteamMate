@@ -46,6 +46,19 @@ def is_patch_title(title: str) -> bool:
     return _VERSION.search(title) is not None or _NEWS_NOT_PATCH.search(title) is None
 
 
+# 상점·드롭·굿즈를 묻는 질문(이때만 일정 답에 상점 글을 남긴다)
+_STORE_QUESTION = re.compile(r"상점|스토어|굿즈|드롭|\b(store|shop|drops?)\b", re.IGNORECASE)
+
+
+def is_store_title(title: str) -> bool:
+    """상점 개편·드롭·굿즈 글("November Store Update 2026")인가."""
+    return _NOT_UPDATE_TITLE.search(title) is not None
+
+
+def asks_store(question: str) -> bool:
+    return _STORE_QUESTION.search(question) is not None
+
+
 def is_test_build(title: str) -> bool:
     return _TEST_TITLE.search(title) is not None
 
@@ -71,8 +84,10 @@ def update_scale(title: str) -> str:
 
 def recent_ids(docs: list[tuple[str, str]], n: int) -> list[str]:
     """(문서 ID, 제목) 목록(오래된 글부터)에서 상점·굿즈 글을 뺀 최근 n건(최신 먼저). 일정·콘텐츠 질문의 RAG에
-    각 글의 청크를 더 넣는다 — 의미 검색은 날짜를 보지 않아 옛 이벤트·DLC가 걸리던 문제 대응(PRD v6.8)."""
-    return [i for i, t in reversed(docs) if not _NOT_UPDATE_TITLE.search(t)][:n]
+    각 글의 청크를 더 넣는다 — 의미 검색은 날짜를 보지 않아 옛 이벤트·DLC가 걸리던 문제 대응(PRD v6.8).
+    핫픽스 글도 뺀다 — 일정·새 콘텐츠 소식이 거의 없는데, DST처럼 최근 5건이 모두 핫픽스면 그 바로 앞의
+    "Hallowed Nights Returns!" 이벤트 공지가 밀려나 "진행 중인 이벤트"를 못 찾았다(2026-11-07)."""
+    return [i for i, t in reversed(docs) if not _NOT_UPDATE_TITLE.search(t) and not _HOTFIX_TITLE.search(t)][:n]
 
 
 def latest_update_id(docs: list[tuple[str, str]]) -> str | None:

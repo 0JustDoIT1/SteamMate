@@ -30,8 +30,10 @@ from app.news import FullNews, NewsService
 from app.qa.llm import ChatResult, LlmClient
 from app.qa.prompt import (
     DOC_SEPARATOR,
+    asks_store,
     doc_header,
     is_patch_title,
+    is_store_title,
     is_test_build,
     latest_update_id,
     mark_latest,
@@ -372,6 +374,8 @@ class NewsQaService:
             # 최신 값·횟수·차이는 서버가 계산하고, 출처도 답으로 고른 기록의 문서로 정한다
             docs = {d.id: DocInfo(d.day, d.news.title) for d in corpus.docs}
             filled = compute_value(filled, req.question, docs, context_ids)
+        if isinstance(filled, ScheduleAnswer) and not asks_store(req.question):
+            filled = _without_store(filled, by_id)
         valid = [c for c in filled.sources if c in context_ids]
         if len(valid) != len(filled.sources):
             logger.info("dropped cited ids not given to the model: %s", len(filled.sources) - len(valid))
@@ -464,6 +468,14 @@ class NewsQaService:
         corpus = _Corpus(docs, latest_update_id(update_titles), recent_ids(titles, self._policy.recent_docs))
         self._cache[appid] = corpus
         return corpus
+
+
+def _without_store(filled: ScheduleAnswer, by_id: dict[str, _Doc]) -> ScheduleAnswer:
+    """상점·드롭·굿즈 글은 일정이 아니다 — "다음 업데이트 언제야?"에 "November Store Update"(상점 개편)가 나열되던 문제.
+    모델이 일정 이름에 공지 제목을 옮기는 경우가 많아 이름과 출처 제목으로 거른다. 남는 일정이 없으면 근거 없음."""
+    items = [i for i in filled.items if not is_store_title(i.name)]
+    sources = [c for c in filled.sources if not ((d := by_id.get(c)) and is_store_title(d.news.title))]
+    return filled.model_copy(update={"items": items, "sources": sources})
 
 
 def _mark_chunk(chunk: Chunk, corpus: _Corpus) -> str:

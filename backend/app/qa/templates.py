@@ -58,6 +58,8 @@ _KINDS: tuple[str, ...] = ScheduleKind.__args__
 _FORMS: tuple[str, ...] = ContentForm.__args__
 # 시작일만 있으면 그날 하루로 보는 종류(출시일, 점검). 이벤트·테스트·할인은 시작 뒤 끝났는지 알 수 없다
 SINGLE_DAY_KINDS = frozenset({"RELEASE", "MAINTENANCE"})
+# 종료일 없이 시작일만 있는 기간 일정(이벤트 등)을 이 날수가 지나면 끝난 것으로 본다(어림 규칙)
+STALE_EVENT_DAYS = 60
 
 # 순서가 중요하다(값 → 일정 → 신규 콘텐츠 → 요약): "피해량은 언제 바뀌었나"는 값, "다음 DLC 언제 나와?"는 일정,
 # "새로 추가된 콘텐츠는?"은 신규 콘텐츠, "바뀐 점"은 요약
@@ -72,7 +74,8 @@ _SUMMARY_WORDS = re.compile(
     r"새로운\s*(점|것)|(뭐|무엇)(가|이)\s*(바뀌|달라)|추가된\s*(기능|것|점)|고친\s*(버그|것)",
     re.IGNORECASE,
 )
-_SCHEDULE_WORDS = re.compile(r"언제|기간|일정|점검|시작|종료|마감|까지|출시일")
+# "이벤트·진행 중·예정": "지금 진행 중인 이벤트 있어?"가 기타로 빠져 답이 없던 문제(2026-11-07)
+_SCHEDULE_WORDS = re.compile(r"언제|기간|일정|점검|시작|종료|마감|까지|출시일|이벤트|진행\s*중|예정")
 _CONTENT_WORDS = re.compile(
     # 한글도 단어 글자라 "DLC에는"에서 \b가 성립하지 않는다 → 영문자 경계만 본다
     r"콘텐츠|컨텐츠|(?<![a-z])DLC(?![a-z])|확장\s*팩|확장판|expansion|"
@@ -311,14 +314,16 @@ def parse_day(text: str) -> date | None:
 def status_of(start: str, end: str, today: date, single_day: bool = False) -> Status:
     """날짜 단위 비교. 종료만 있으면 그날까지 진행 중으로 본다.
     시작만 있을 때: 출시일 같은 하루짜리(single_day)는 그날 진행 중·지나면 종료, 이벤트처럼 기간이 있는 일정은
-    시작 뒤 끝났는지 알 수 없어 UNKNOWN(Apex "Blood Pact Event" 시작일만 있는데 종료로 판정하던 문제)."""
+    시작 뒤 끝났는지 알 수 없어 UNKNOWN(Apex "Blood Pact Event" 시작일만 있는데 종료로 판정하던 문제).
+    다만 시작한 지 STALE_EVENT_DAYS일이 넘었으면 종료로 본다 — 게임 이벤트는 보통 몇 주라, 작년 12월
+    Winter's Feast가 "진행 중인 이벤트" 답에 "상태 모름"으로 나오던 문제(DST, 2026-11-07)."""
     s, e = parse_day(start), parse_day(end)
     if s is None and e is None:
         return Status.UNKNOWN
     if s is not None and today < s:
         return Status.UPCOMING
     if e is None and not single_day:
-        return Status.UNKNOWN
+        return Status.ENDED if s is not None and (today - s).days > STALE_EVENT_DAYS else Status.UNKNOWN
     last = e or s
     return Status.ENDED if today > last else Status.ONGOING
 

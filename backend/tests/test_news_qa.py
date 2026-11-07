@@ -270,6 +270,29 @@ async def test_value_when_question_answers_version_from_title(ai_client, steam_h
     assert body["answer"] == "1.1 (46 → 48)" and [s["gid"] for s in body["sources"]] == ["2002"]
 
 
+async def test_schedule_drops_store_posts_unless_asked(ai_client, steam_handler, fake_llm):
+    """상점 개편·드롭 글은 일정이 아니다("다음 업데이트 언제야?"에 "November Store Update"가 나열되던 문제).
+    상점을 직접 물으면 남긴다. 남는 일정이 없으면 근거 없음."""
+    notes = [item("5002", NEW, "November Store Update 2026", "[p]New skins in the store from Nov 3.[/p]"),
+             item("5001", OLD, "Patch 44.1", "[p]Update 44.1 goes live on Nov 3.[/p]")]
+    steam_handler["fn"] = news_handler(notes)
+    store_item = {"name": "November Store Update 2026", "kind": "EVENT", "start": "2099-11-03", "end": ""}
+    patch_item = {"name": "Update 44.1", "kind": "RELEASE", "start": "2099-11-03", "end": ""}
+    fake_llm.reply = [{"items": [store_item, patch_item], "sources": ["N002", "N001"]},
+                      {"items": [store_item], "sources": ["N002"]},
+                      {"items": [store_item], "sources": ["N002"]}]
+
+    body = (await ai_client.post("/steam/news/ask", json=ask("다음 업데이트 언제야?"))).json()
+    assert [i["name"] for i in body["schedule"]["items"]] == ["Update 44.1"]
+    assert [s["gid"] for s in body["sources"]] == ["5001"]
+
+    only_store = (await ai_client.post("/steam/news/ask", json=ask("다음 업데이트 언제야?"))).json()
+    assert only_store["refused"] is True and only_store["schedule"] is None
+
+    asked = (await ai_client.post("/steam/news/ask", json=ask("상점 업데이트 언제야?"))).json()
+    assert [i["name"] for i in asked["schedule"]["items"]] == ["November Store Update 2026"]
+
+
 LINK = '[url="https://pubg.com/news/11306"]Read the full announcement here![/url]'
 
 
@@ -558,6 +581,9 @@ async def test_ollama_failures_become_ai_unavailable(handler):
     ("수확 축제 이벤트는 언제 끝나나요?", "SCHEDULE"),
     ("다음 점검은 언제야?", "SCHEDULE"),
     ("다음 DLC는 언제 나와?", "SCHEDULE"),  # 날짜를 물으면 콘텐츠보다 일정이 먼저
+    ("지금 진행 중인 이벤트 있어?", "SCHEDULE"),  # "언제" 없이 이벤트·진행 중만 물어도 일정(2026-11-07)
+    ("예정된 이벤트 알려줘", "SCHEDULE"),
+    ("이벤트 보상은 얼마야?", "VALUE"),  # 수치를 물으면 여전히 값이 먼저
     ("새로 추가된 콘텐츠는?", "CONTENT"),
     ("이번 DLC에는 뭐가 있어?", "CONTENT"),
     ("새 맵 소식 있어?", "CONTENT"),
@@ -601,6 +627,9 @@ TODAY = date(2026, 11, 5)
     ("2026-11-05", "", True, "ONGOING"),  # 하루짜리(출시일)는 그날
     ("2026-08-19", "", True, "ENDED"),
     ("2026-10-13", "", False, "UNKNOWN"),  # 시작만 아는 이벤트는 끝났는지 모른다
+    ("2026-09-06", "", False, "UNKNOWN"),  # 시작 후 60일째까지는 모른다
+    ("2026-09-05", "", False, "ENDED"),  # 60일이 넘으면 끝난 것으로 본다(작년 Winter's Feast 등)
+    ("2025-12-18", "", False, "ENDED"),
     ("2026-11-13", "", False, "UPCOMING"),
     ("", "2026-11-30", False, "ONGOING"),  # 종료만 있으면 그날까지 진행 중
     ("", "2026. 10. 31.", False, "ENDED"),
@@ -779,3 +808,14 @@ async def test_warmup_and_question_share_one_corpus_fetch(ai_client, steam_handl
     await asyncio.gather(ai_client.post(f"/steam/news/{APPID}/ask/warmup"), ai_client.post("/steam/news/ask", json=ask()))
     await _wait_warm(ai_client.app)
     assert len(calls) == 1  # 동시에 와도 공지는 한 번만 받는다
+
+
+def test_recent_ids_skip_store_and_hotfix_posts():
+    """일정·콘텐츠 질문의 최근 공지: 상점·굿즈와 핫픽스는 뺀다 — DST처럼 최근 5건이 모두 핫픽스면
+    바로 앞의 이벤트 공지("Hallowed Nights Returns!")가 밀려났다."""
+    from app.qa.prompt import recent_ids
+
+    docs = [("N001", "Klei Fest Coming June 11th!"), ("N002", "Hallowed Nights Returns!"),
+            ("N003", "Hotfix 760178"), ("N004", "Hotifix 760944"), ("N005", "November Store Update"),
+            ("N006", "Hotfix 762113"), ("N007", "Patch 1.2 Notes")]
+    assert recent_ids(docs, 3) == ["N007", "N002", "N001"]
